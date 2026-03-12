@@ -1,0 +1,6 @@
+﻿
+C:\Users\Mario\Documents\iavolution\frontend\src\pages\Dashboard.jsx
+  16:8  warning  React Hook useEffect has a missing dependency: 'fetchEnrollments'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Ô£û 1 problem (0 errors, 1 warning)
+

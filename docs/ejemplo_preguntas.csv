@@ -1,0 +1,4 @@
+pregunta,opcion1,opcion2,opcion3,opcion4,respuesta_correcta,puntos
+"¿Qué es un chatbot?","Un robot físico","Un programa que simula conversación","Un tipo de hardware","Un lenguaje de programación",1,10
+"¿Cuál es la función de un LLM?","Gestionar bases de datos","Procesar imágenes","Generar y comprender texto","Diseñar interfaces",2,10
+"¿Qué significa IA?","Internet Avanzado","Inteligencia Artificial","Información Automática","Interfaz Analítica",1,10

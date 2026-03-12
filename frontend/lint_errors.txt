@@ -1,0 +1,11 @@
+﻿
+C:\Users\Mario\Documents\iavolution\frontend\src\pages\admin\CourseBuilder.jsx
+    9:13  error    'user' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                no-unused-vars
+   63:8   warning  React Hook useEffect has a missing dependency: 'fetchCourseData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  280:9   error    'setUploadProgress' is not defined                                                                                  no-undef
+  334:13  error    'setUploadProgress' is not defined                                                                                  no-undef
+  408:9   error    'setIsCreatingQuiz' is not defined                                                                                  no-undef
+  425:13  error    'setIsCreatingQuiz' is not defined                                                                                  no-undef
+
+Ô£û 6 problems (5 errors, 1 warning)
+
