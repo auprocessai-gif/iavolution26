@@ -11,7 +11,10 @@ import {
     UserPlus,
     X,
     CheckCircle2,
-    Info
+    Info,
+    BrainCircuit,
+    Zap,
+    History
 } from 'lucide-react';
 import { useNotifications } from '../contexts/NotificationContext';
 import { Link } from 'react-router-dom';
@@ -37,6 +40,7 @@ const NotificationBell = () => {
             case 'event': return <Calendar className="w-5 h-5 text-amber-400" />;
             case 'enrollment': return <UserPlus className="w-5 h-5 text-indigo-400" />;
             case 'system': return <Info className="w-5 h-5 text-blue-400" />;
+            case 'ai_suggestion': return <BrainCircuit className="w-5 h-5 text-indigo-400" />;
             default: return <Bell className="w-5 h-5 text-slate-400" />;
         }
     };

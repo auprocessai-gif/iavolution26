@@ -21,6 +21,9 @@ import {
 } from 'lucide-react';
 import { useModal } from '../contexts/ModalContext';
 import CourseCalendar from '../components/CourseCalendar';
+import CourseChat from '../components/CourseChat';
+import CourseForum from '../components/CourseForum';
+import AiTutorChat from '../components/AiTutorChat';
 
 const CoursePlayer = () => {
     const { id } = useParams();
@@ -50,12 +53,21 @@ const CoursePlayer = () => {
     const [quizResult, setQuizResult] = useState(null);
     const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
     const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
+ 
+    // Final Project State
+    const [project, setProject] = useState(null);
+    const [projectSubmission, setProjectSubmission] = useState(null);
+    const [showProject, setShowProject] = useState(false);
+    const [projectFile, setProjectFile] = useState(null);
+    const [projectLink, setProjectLink] = useState('');
+    const [isSubmittingProject, setIsSubmittingProject] = useState(false);
 
     useEffect(() => {
         if (user) {
             fetchCourseContent();
             fetchProgress();
             fetchMaterialViews();
+            fetchProjectInfo();
         }
     }, [id, user]);
 
@@ -118,6 +130,37 @@ const CoursePlayer = () => {
         }
     };
 
+    const fetchProjectInfo = async () => {
+        if (!id) return;
+        try {
+            const { data: projData, error: projError } = await supabase
+                .schema('iavolution')
+                .from('course_projects')
+                .select('*')
+                .eq('course_id', id)
+                .maybeSingle();
+
+            if (projError) throw projError;
+            setProject(projData);
+
+            if (projData && user?.id) {
+                const { data: subData, error: subError } = await supabase
+                    .schema('iavolution')
+                    .from('project_submissions')
+                    .select('*')
+                    .eq('project_id', projData.id)
+                    .eq('user_id', user.id)
+                    .maybeSingle();
+
+                if (subError) throw subError;
+                setProjectSubmission(subData);
+            }
+        } catch (err) {
+            console.error('Error fetching project info:', err);
+        }
+    };
+
+
     const toggleLessonCompletion = async (lessonId) => {
         const isCompleted = completedLessons.has(lessonId);
 
@@ -149,6 +192,49 @@ const CoursePlayer = () => {
             console.error('Error updating progress:', err);
         }
     };
+
+    // --- Final Project Submission ---
+    const handleSubmitProject = async () => {
+        if (!projectLink.trim() && !projectFile) {
+            await showAlert('Por favor, indica un enlace o adjunta un archivo para tu proyecto.', 'warning');
+            return;
+        }
+
+        setIsSubmittingProject(true);
+        try {
+            let fileUrl = null;
+            if (projectFile) {
+                const fileExt = projectFile.name.split('.').pop();
+                const fileName = `project-${project.id}-${user.id}.${fileExt}`;
+                const filePath = `course-${id}/projects/${fileName}`;
+                const { error: uploadErr } = await supabase.storage.from('course-content').upload(filePath, projectFile, { cacheControl: '3600', upsert: true });
+                if (uploadErr) throw uploadErr;
+                const { data: urlData } = supabase.storage.from('course-content').getPublicUrl(filePath);
+                fileUrl = urlData.publicUrl;
+            }
+
+            const { error } = await supabase.schema('iavolution').from('project_submissions').upsert([{
+                project_id: project.id,
+                user_id: user.id,
+                content: projectLink,
+                file_url: fileUrl,
+                status: 'pending'
+            }]);
+
+            if (error) throw error;
+
+            await showAlert('¡Proyecto Final enviado correctamente! El profesor lo revisará pronto.', 'success');
+            setProjectFile(null);
+            setProjectLink('');
+            await fetchProjectInfo();
+        } catch (err) {
+            console.error(err);
+            await showAlert('Error al enviar el proyecto: ' + (err.message || 'Error desconocido'), 'error');
+        } finally {
+            setIsSubmittingProject(false);
+        }
+    };
+
 
     const fetchCourseContent = async () => {
         setLoading(true);
@@ -472,6 +558,18 @@ const CoursePlayer = () => {
                                         Clases
                                     </button>
                                     <button
+                                        onClick={() => setActiveTab('forum')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'forum' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        Foro
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('chat')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'chat' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        Chat
+                                    </button>
+                                    <button
                                         onClick={() => setActiveTab('calendar')}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'calendar' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
                                     >
@@ -498,11 +596,139 @@ const CoursePlayer = () => {
                             </div>
                         </div>
 
-                        {/* Lesson Content Wrapper */}
+                        {/* Project / Lesson / Calendar Content Wrapper */}
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                             {activeTab === 'lessons' ? (
                                 <>
-                                    {renderMaterialContent(currentLesson)}
+                                    {showProject ? (
+                                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 lg:p-12 shadow-2xl relative overflow-hidden">
+                                            {/* Decorative background */}
+                                            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 blur-[100px] -mr-32 -mt-32"></div>
+                                            
+                                            <div className="relative z-10">
+                                                <div className="flex items-center gap-4 mb-8">
+                                                    <div className="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                                                        <BrainCircuit className="w-8 h-8 text-white" />
+                                                    </div>
+                                                    <div>
+                                                        <h1 className="text-3xl font-black text-white tracking-tight">{project?.title || 'Proyecto Final'}</h1>
+                                                        <p className="text-indigo-400 font-bold tracking-widest uppercase text-xs mt-1">Culminación del programa</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                                                    {/* Instructions Side */}
+                                                    <div className="lg:col-span-2 space-y-8">
+                                                        <section>
+                                                            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                                                <FileText className="w-5 h-5 text-indigo-400" />
+                                                                Instrucciones del Proyecto
+                                                            </h3>
+                                                            <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-6 text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                                {project?.instructions || 'El profesor no ha proporcionado instrucciones detalladas para este proyecto aún.'}
+                                                            </div>
+                                                        </section>
+
+                                                        {project?.rubric && (
+                                                            <section>
+                                                                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                                                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                                                                    Rúbrica de Evaluación
+                                                                </h3>
+                                                                <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-6 text-slate-300 text-sm whitespace-pre-wrap">
+                                                                    {project.rubric}
+                                                                </div>
+                                                            </section>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Submission Side */}
+                                                    <div className="space-y-6">
+                                                        <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm">
+                                                            <h3 className="text-white font-bold mb-4">Estado de Entrega</h3>
+                                                            
+                                                            {projectSubmission ? (
+                                                                <div className="space-y-4">
+                                                                    <div className={`p-4 rounded-xl border ${projectSubmission.status === 'graded' ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
+                                                                        <div className="flex items-center justify-between mb-2">
+                                                                            <span className={`text-[10px] font-black uppercase tracking-widest ${projectSubmission.status === 'graded' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                                                                {projectSubmission.status === 'graded' ? 'CALIFICADO' : 'PENDIENTE'}
+                                                                            </span>
+                                                                            {projectSubmission.grade !== null && (
+                                                                                <span className="text-2xl font-black text-white">{projectSubmission.grade}<span className="text-sm text-slate-500">/10</span></span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="text-xs text-slate-400 italic">Entregado el {new Date(projectSubmission.submitted_at).toLocaleDateString()}</p>
+                                                                    </div>
+
+                                                                    {projectSubmission.feedback && (
+                                                                        <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-xl">
+                                                                            <p className="text-[10px] font-black text-indigo-400 mb-2 uppercase tracking-widest">FEEDBACK:</p>
+                                                                            <p className="text-sm text-slate-300 italic">"{projectSubmission.feedback}"</p>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {projectSubmission.status !== 'graded' && (
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                setProjectLink(projectSubmission.content || '');
+                                                                                setProjectSubmission(null); // Allow re-submission while pending
+                                                                            }}
+                                                                            className="w-full text-slate-400 hover:text-white text-xs font-bold transition-all py-2 border border-dashed border-slate-700 rounded-xl hover:border-slate-500"
+                                                                        >
+                                                                            Modificar Entrega
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="space-y-4">
+                                                                    <div>
+                                                                        <label className="text-[10px] font-black text-slate-500 mb-2 block uppercase tracking-widest">Enlace del Proyecto (GitHub/Google Drive)</label>
+                                                                        <input 
+                                                                            type="url" 
+                                                                            value={projectLink}
+                                                                            onChange={e => setProjectLink(e.target.value)}
+                                                                            placeholder="https://github.com/tu-usuario/proyecto..."
+                                                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="text-[10px] font-black text-slate-500 mb-2 block uppercase tracking-widest">Archivo Adjunto</label>
+                                                                        <label className="w-full flex flex-col items-center justify-center border-2 border-dashed border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/5 rounded-2xl py-6 cursor-pointer transition-all group">
+                                                                            <Upload className="w-6 h-6 text-slate-600 group-hover:text-indigo-400 mb-2 transition-colors" />
+                                                                            <span className="text-xs text-slate-500 group-hover:text-slate-300 px-4 text-center">
+                                                                                {projectFile ? projectFile.name : 'Haz clic para subir (ZIP/PDF)'}
+                                                                            </span>
+                                                                            <input type="file" className="hidden" onChange={e => setProjectFile(e.target.files[0])} />
+                                                                        </label>
+                                                                    </div>
+                                                                    <button 
+                                                                        onClick={handleSubmitProject}
+                                                                        disabled={isSubmittingProject || (!projectLink.trim() && !projectFile)}
+                                                                        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 group disabled:opacity-50"
+                                                                    >
+                                                                        {isSubmittingProject ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />}
+                                                                        {isSubmittingProject ? 'ENVIANDO...' : 'ENVIAR PROYECTO FINAL'}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {project?.min_passing_grade && (
+                                                            <div className="flex items-center gap-3 px-6 py-4 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl">
+                                                                <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                                                                    <CheckCircle2 className="w-4 h-4 text-indigo-400" />
+                                                                </div>
+                                                                <span className="text-xs text-indigo-300 font-bold">Nota mínima para aprobar: {project.min_passing_grade}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {renderMaterialContent(currentLesson)}
 
                                     <div className="mt-8">
                                         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">{currentLesson?.title}</h1>
@@ -671,6 +897,12 @@ const CoursePlayer = () => {
                                         )}
                                     </div>
                                 </>
+                            )}
+                        </>
+                            ) : activeTab === 'forum' ? (
+                                <CourseForum courseId={id} />
+                            ) : activeTab === 'chat' ? (
+                                <CourseChat courseId={id} />
                             ) : (
                                 <CourseCalendar
                                     courseId={id}
@@ -701,6 +933,7 @@ const CoursePlayer = () => {
                                                 onClick={() => {
                                                     setActiveTab('lessons');
                                                     setCurrentLesson(lesson);
+                                                    setShowProject(false);
                                                     if (window.innerWidth < 1024) setSidebarOpen(false);
                                                 }}
                                                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left ${isActive
@@ -724,6 +957,34 @@ const CoursePlayer = () => {
                                 </div>
                             </div>
                         ))}
+
+                        {project && (
+                            <div className="mt-2 pt-2 border-t border-slate-800/50">
+                                <button
+                                    onClick={() => {
+                                        setActiveTab('lessons');
+                                        setShowProject(true);
+                                        setCurrentLesson(null);
+                                        if (window.innerWidth < 1024) setSidebarOpen(false);
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-4 py-4 rounded-xl transition-all text-left ${showProject
+                                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/20'
+                                        : 'text-indigo-400 hover:bg-slate-800'
+                                        }`}
+                                >
+                                    <div className={`p-1.5 rounded-lg border ${showProject ? 'bg-white/20 border-white/20' : 'bg-slate-950 border-indigo-500/30'}`}>
+                                        <BrainCircuit className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-black truncate leading-tight uppercase tracking-wider">PROYECTO FINAL</p>
+                                        <p className={`text-[10px] mt-0.5 ${showProject ? 'text-indigo-200' : 'text-slate-500'}`}>
+                                            {projectSubmission ? (projectSubmission.status === 'graded' ? 'Calificado' : 'Entregado') : 'Pendiente de entrega'}
+                                        </p>
+                                    </div>
+                                    {projectSubmission?.status === 'graded' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="p-4 bg-slate-950 border-t border-slate-800 mt-auto">
@@ -910,6 +1171,8 @@ const CoursePlayer = () => {
                     </div>
                 )
             }
+            
+            {user && <AiTutorChat courseId={id} user={user} />}
         </>
     );
 };

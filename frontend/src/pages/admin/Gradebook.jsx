@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { getGeminiResponse } from '../../lib/gemini';
 import {
     Search,
     Filter,
@@ -16,7 +17,9 @@ import {
     X,
     FileText,
     Send,
-    ExternalLink
+    ExternalLink,
+    BrainCircuit,
+    Download
 } from 'lucide-react';
 import { useModal } from '../../contexts/ModalContext';
 import { useNotifications } from '../../contexts/NotificationContext';
@@ -38,6 +41,10 @@ const Gradebook = () => {
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [isGrading, setIsGrading] = useState(false);
     const [gradingData, setGradingData] = useState({ grade: '', feedback: '', submissionId: '' });
+    
+    // AI Feedback state
+    const [isGeneratingFeedback, setIsGeneratingFeedback] = useState(false);
+    const [loadingSubmissionId, setLoadingSubmissionId] = useState(null);
 
     // Placeholder for user and profile data - in a real app, these would come from auth context or similar
     const [user, setUser] = useState({ id: 'some-user-id' }); // Replace with actual user ID
@@ -161,6 +168,13 @@ const Gradebook = () => {
                     .select('*, quizzes(title, passing_score, lesson_id)')
                     .eq('user_id', userId);
 
+                // Get project submissions
+                const { data: projectSubData } = await supabase
+                    .schema('iavolution')
+                    .from('project_submissions')
+                    .select('*, course_projects(title, min_passing_grade)')
+                    .eq('user_id', userId);
+
                 const completedCount = progressData?.length || 0;
                 const progressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
 
@@ -170,7 +184,8 @@ const Gradebook = () => {
                     completedCount,
                     totalLessons,
                     submissions: submissionData || [],
-                    attempts: attemptData || []
+                    attempts: attemptData || [],
+                    projects: projectSubData || []
                 };
             });
 
@@ -248,6 +263,139 @@ const Gradebook = () => {
             await showAlert('Error al guardar la calificación.', 'error');
         } finally {
             setIsGrading(false);
+        }
+    };
+
+    const handleGradeProject = async (projectId, subId) => {
+        if (!gradingData.grade || isGrading) return;
+
+        setIsGrading(true);
+        try {
+            const { error } = await supabase
+                .schema('iavolution')
+                .from('project_submissions')
+                .update({
+                    grade: parseFloat(gradingData.grade),
+                    feedback: gradingData.feedback,
+                    status: 'graded',
+                    graded_at: new Date().toISOString()
+                })
+                .eq('id', subId);
+
+            if (error) throw error;
+
+            // Send notification
+            await createNotification({
+                user_id: selectedStudent.id,
+                type: 'grade',
+                title: 'Proyecto Calificado',
+                message: `Tu Proyecto Final ha sido calificado con ${gradingData.grade}/10.`,
+                link: `/courses/${selectedCourse}`
+            });
+
+            await showAlert('Proyecto calificado con éxito.', 'success');
+            
+            // Update local state
+            const updatedStudents = students.map(s => {
+                if (s.id === selectedStudent.id) {
+                    return {
+                        ...s,
+                        projects: s.projects.map(p =>
+                            p.id === subId
+                                ? { ...p, grade: parseFloat(gradingData.grade), feedback: gradingData.feedback, status: 'graded' }
+                                : p
+                        )
+                    };
+                }
+                return s;
+            });
+            setStudents(updatedStudents);
+            setSelectedStudent(updatedStudents.find(s => s.id === selectedStudent.id));
+            setGradingData({ grade: '', feedback: '', submissionId: '' });
+        } catch (err) {
+            console.error('Error grading project:', err);
+            await showAlert('Error al guardar la calificación del proyecto.', 'error');
+        } finally {
+            setIsGrading(false);
+        }
+    };
+
+    const handleGenerateFeedbackAI = async (submission, type = 'assignment') => {
+        if (!submission) return;
+        
+        // If there's no text content and only a file, we warn the user
+        if (!submission.content?.trim() && submission.file_url) {
+            await showAlert('La IA actual solo puede evaluar respuestas de texto escrito. Si la entrega es un documento adjunto, copia y pega el contenido en la zona de texto o evalúalo manualmente.', 'error');
+            return;
+        }
+
+        if (!submission.content?.trim()) {
+            await showAlert('No hay contenido de texto para que la IA lo evalúe.', 'error');
+            return;
+        }
+
+        setIsGeneratingFeedback(true);
+        setLoadingSubmissionId(submission.id);
+
+        try {
+            const maxPoints = type === 'project' 
+                ? 10 
+                : (submission.assignments?.max_points || 100);
+                
+            const title = type === 'project' 
+                ? (submission.course_projects?.title || 'Proyecto Final')
+                : (submission.assignments?.title || 'Tarea');
+
+            const systemContext = `
+Eres un profesor universitario experto, justo pero constructivo.
+Evalúa la entrega del alumno basándote en la siguiente configuración:
+- Título del trabajo: "${title}"
+- Puntuación máxima posible: ${maxPoints}. 
+
+Tu objetivo es leer el texto de la entrega y proporcionar una calificación numérica y un feedback.
+Proporciona el feedback en español. El feedback debe tener de 2 a 3 frases, destacando lo bueno y señalando áreas de mejora.
+
+MUY IMPORTANTE: Expresa tu respuesta ESTRICTAMENTE en un formato JSON válido.
+No devuelvas NADA MÁS que el JSON puro, sin formato markdown (\`\`\`json). SOLO el objeto.
+
+Formato requerido:
+{
+    "grade": 8, // el número exacto sobre ${maxPoints} o como consideres evaluando el contenido
+    "feedback": "Texto de tu retroalimentación aquí."
+}
+            `;
+            
+            const prompt = `Texto de la entrega del alumno:\n\n${submission.content}`;
+            
+            let resultText = await getGeminiResponse(prompt, systemContext);
+            resultText = resultText.replace(/```json/gi, '').replace(/```/gi, '').trim();
+            
+            let resultObj = null;
+            try {
+                resultObj = JSON.parse(resultText);
+            } catch (err) {
+                console.error("Gemini failed returning JSON:", resultText);
+                throw new Error("El formato devuelto por la IA no fue válido.");
+            }
+
+            if (resultObj && typeof resultObj.grade !== 'undefined' && resultObj.feedback) {
+                // Pre-fill the grading form with AI's result
+                setGradingData({
+                    submissionId: submission.id,
+                    grade: Number(resultObj.grade),
+                    feedback: resultObj.feedback
+                });
+                await showAlert('Evaluación generada con IA. Revisa y gúardala si estás conforme.', 'success');
+            } else {
+                 throw new Error("El JSON de la IA estaba incompleto.");
+            }
+
+        } catch (error) {
+            console.error('Error in AI grading:', error);
+            await showAlert('No se pudo generar el feedback con IA: ' + error.message, 'error');
+        } finally {
+            setIsGeneratingFeedback(false);
+            setLoadingSubmissionId(null);
         }
     };
 
@@ -539,16 +687,28 @@ const Gradebook = () => {
                                                                 />
                                                             </div>
                                                         </div>
-                                                        {gradingData.submissionId === sub.id && (
+                                                        <div className="flex justify-between items-center sm:flex-row flex-col gap-3">
+                                                            <button 
+                                                                onClick={() => handleGenerateFeedbackAI(sub, 'assignment')}
+                                                                disabled={isGeneratingFeedback && loadingSubmissionId === sub.id}
+                                                                className="flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 whitespace-nowrap"
+                                                            >
+                                                                {isGeneratingFeedback && loadingSubmissionId === sub.id ? (
+                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <BrainCircuit className="w-3.5 h-3.5" />
+                                                                )}
+                                                                Evaluar con IA
+                                                            </button>
+                                                            
                                                             <button
                                                                 onClick={handleGradeSubmission}
-                                                                disabled={!gradingData.grade || isGrading}
-                                                                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-2 transition-all"
+                                                                disabled={isGrading || !gradingData.grade || gradingData.submissionId !== sub.id}
+                                                                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-lg font-bold text-xs transition-colors disabled:opacity-50"
                                                             >
-                                                                {isGrading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                                                                Guardar Nota
+                                                                {isGrading && gradingData.submissionId === sub.id ? 'Guardando...' : 'Guardar Calificación'}
                                                             </button>
-                                                        )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))
@@ -586,6 +746,117 @@ const Gradebook = () => {
                                         )}
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Final Project Section */}
+                            <div className="pt-8 border-t border-slate-800">
+                                <h4 className="font-bold text-white mb-4 flex items-center gap-2">
+                                    <BrainCircuit className="w-5 h-5 text-indigo-400" /> Evaluación del Proyecto Final
+                                </h4>
+                                
+                                {selectedStudent.projects?.length === 0 ? (
+                                    <div className="bg-slate-950/30 border border-slate-800 border-dashed rounded-2xl p-8 text-center">
+                                        <p className="text-slate-500 italic">El alumno aún no ha enviado el Proyecto Final.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {selectedStudent.projects.map(projSub => (
+                                            <div key={projSub.id} className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-6">
+                                                <div className="flex justify-between items-start mb-6">
+                                                    <div>
+                                                        <h5 className="text-lg font-bold text-white mb-1">{projSub.course_projects?.title || 'Proyecto Final'}</h5>
+                                                        <p className="text-xs text-slate-400">Entregado el {new Date(projSub.submitted_at).toLocaleDateString()}</p>
+                                                    </div>
+                                                    <div className={`px-4 py-2 rounded-xl border flex flex-col items-center ${projSub.status === 'graded' ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Nota Final</span>
+                                                        <span className="text-xl font-black text-white">{projSub.grade !== null ? projSub.grade : '--'} <span className="text-xs text-slate-500">/ 10</span></span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Respuesta / Enlace:</p>
+                                                            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-slate-300 min-h-[100px] whitespace-pre-wrap">
+                                                                {projSub.content || 'Sin respuesta de texto.'}
+                                                            </div>
+                                                        </div>
+                                                        {projSub.file_url && (
+                                                            <a 
+                                                                href={projSub.file_url} 
+                                                                target="_blank" 
+                                                                rel="noreferrer"
+                                                                className="flex items-center gap-2 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 px-4 py-2 rounded-lg text-xs font-bold w-fit transition-all border border-indigo-500/20"
+                                                            >
+                                                                <Download className="w-4 h-4" /> Descargar Archivo del Proyecto
+                                                            </a>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-6 space-y-4">
+                                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Calificar Proyecto:</p>
+                                                        <div className="grid grid-cols-1 gap-4">
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-slate-400 mb-1 block">Nota del Proyecto (0-10)</label>
+                                                                <input 
+                                                                    type="number" 
+                                                                    step="0.1"
+                                                                    max="10"
+                                                                    min="0"
+                                                                    placeholder="Ej: 8.5"
+                                                                    value={gradingData.submissionId === projSub.id ? gradingData.grade : (projSub.grade || '')}
+                                                                    onChange={e => setGradingData({
+                                                                        ...gradingData,
+                                                                        submissionId: projSub.id,
+                                                                        grade: e.target.value,
+                                                                        feedback: gradingData.submissionId === projSub.id ? gradingData.feedback : (projSub.feedback || '')
+                                                                    })}
+                                                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-slate-400 mb-1 block">Feedback del tutor</label>
+                                                                <textarea 
+                                                                    placeholder="Comentarios sobre el proyecto..."
+                                                                    value={gradingData.submissionId === projSub.id ? gradingData.feedback : (projSub.feedback || '')}
+                                                                    onChange={e => setGradingData({
+                                                                        ...gradingData,
+                                                                        submissionId: projSub.id,
+                                                                        feedback: e.target.value,
+                                                                        grade: gradingData.submissionId === projSub.id ? gradingData.grade : (projSub.grade || '')
+                                                                    })}
+                                                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all h-24"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex justify-between items-center sm:flex-row flex-col gap-3">
+                                                            <button 
+                                                                onClick={() => handleGenerateFeedbackAI(projSub, 'project')}
+                                                                disabled={isGeneratingFeedback && loadingSubmissionId === projSub.id}
+                                                                className="flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 whitespace-nowrap"
+                                                            >
+                                                                {isGeneratingFeedback && loadingSubmissionId === projSub.id ? (
+                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <BrainCircuit className="w-3.5 h-3.5" />
+                                                                )}
+                                                                Evaluar con IA
+                                                            </button>
+
+                                                            <button
+                                                                onClick={() => handleGradeProject(projSub.project_id, projSub.id)}
+                                                                disabled={isGrading || !gradingData.grade || gradingData.submissionId !== projSub.id}
+                                                                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-lg font-bold text-xs transition-colors disabled:opacity-50"
+                                                            >
+                                                                {isGrading && gradingData.submissionId === projSub.id ? 'Guardando...' : 'Guardar Calificación'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
 

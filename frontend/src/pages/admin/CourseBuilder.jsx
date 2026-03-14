@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { getGeminiResponse } from '../../lib/gemini';
 import { Loader2, ArrowLeft, Plus, Edit3, Trash2, Video, FileText, ChevronDown, ChevronUp, BookOpen, BrainCircuit, X, Upload, Users, Calendar, Shield, Save } from 'lucide-react';
 import { useModal } from '../../contexts/ModalContext';
 import CourseCalendar from '../../components/CourseCalendar';
@@ -59,6 +60,12 @@ const CourseBuilder = () => {
         points: 10
     });
     const [isSavingQuestion, setIsSavingQuestion] = useState(false);
+
+    // AI Quiz Generator States
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [showAIModal, setShowAIModal] = useState(false);
+    const [aiPrompt, setAiPrompt] = useState('');
+    const [aiQuestionCount, setAiQuestionCount] = useState(5);
 
     // Instructor Assignment States
     const [teachers, setTeachers] = useState([]);
@@ -604,6 +611,72 @@ const CourseBuilder = () => {
         } finally {
             setIsImportingCSV(false);
             e.target.value = ''; // Reset file input
+        }
+    };
+
+    // Generate Quiz Questions with AI
+    const handleGenerateWithAI = async (e) => {
+        e.preventDefault();
+        if (!aiPrompt.trim() || !editingQuiz) return;
+        setIsGeneratingAI(true);
+
+        try {
+            const systemContext = `
+Eres un experto creador de contenido educativo.
+Genera estrictamente un array JSON válido con preguntas de opción múltiple.
+El formato exacto debe ser:
+[
+    {
+        "question_text": "Texto de la pregunta",
+        "options": ["Opcion 1", "Opcion 2", "Opción 3", "Opción 4"],
+        "correct_answer": 0, // índice numérico de la respuesta correcta de 0 a 3
+        "points": 10 // puntos de la pregunta
+    }
+]
+No devuelvas NADA MÁS que el JSON puro, sin texto adicional, sin formato de código markdown (\`\`\`json). SOLO el array JSON crudo.
+            `;
+            
+            const prompt = `Por favor, actúa como tutor y genera ${aiQuestionCount} preguntas sobre este tema/contexto:\n\n${aiPrompt}`;
+            
+            let resultText = await getGeminiResponse(prompt, systemContext);
+            
+            // Validate and clean if Gemini still inputs markdown format
+            resultText = resultText.replace(/```json/gi, '').replace(/```/gi, '').trim();
+            
+            let questionsObj = [];
+            try {
+                questionsObj = JSON.parse(resultText);
+            } catch (parseError) {
+                console.error("No se pudo parsear el resultado:", resultText);
+                throw new Error("El modelo de lenguaje devolvió un formato inválido. Inténtalo de nuevo.");
+            }
+
+            if (!Array.isArray(questionsObj) || questionsObj.length === 0) {
+                throw new Error("El JSON devuelto no tiene el formato de array esperado.");
+            }
+
+            // Map, validate, and set foreign key
+            const insertData = questionsObj.map(q => ({
+                quiz_id: editingQuiz.id,
+                question_text: q.question_text || 'Pregunta sin texto',
+                options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ['A', 'B', 'C', 'D'],
+                correct_answer: (typeof q.correct_answer === 'number' && q.correct_answer >= 0 && q.correct_answer <= 3) ? q.correct_answer : 0,
+                points: typeof q.points === 'number' ? q.points : 10
+            }));
+
+            const { error } = await supabase.schema('iavolution').from('quiz_questions').insert(insertData);
+            if (error) throw error;
+
+            await showAlert(`¡${insertData.length} preguntas generadas e importadas correctamente con IA!`, 'success');
+            setShowAIModal(false);
+            setAiPrompt('');
+            await fetchQuizQuestions(editingQuiz.id);
+
+        } catch (err) {
+            console.error('Error generando preguntas con IA:', err);
+            await showAlert('Hubo un error al generar las preguntas. Detalle: ' + err.message, 'error');
+        } finally {
+            setIsGeneratingAI(false);
         }
     };
 
@@ -1160,19 +1233,68 @@ const CourseBuilder = () => {
                                     <h3 className="text-xl font-bold text-white">Editar Preguntas: {editingQuiz.title}</h3>
                                     <p className="text-slate-400 text-sm">Añade preguntas de opción múltiple o importa desde CSV</p>
                                 </div>
-                                <div className="flex items-center gap-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <button 
+                                        onClick={() => setShowAIModal(!showAIModal)} 
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${showAIModal ? 'bg-indigo-500 text-white' : 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white'}`}
+                                    >
+                                        <BrainCircuit className="w-4 h-4" /> Generar con IA
+                                    </button>
                                     <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer transition-colors ${isImportingCSV ? 'bg-slate-700 text-slate-400' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
                                         <Upload className="w-4 h-4" />
                                         {isImportingCSV ? 'Importando...' : 'Importar CSV'}
                                         <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" disabled={isImportingCSV} />
                                     </label>
-                                    <button onClick={() => setEditingQuiz(null)} className="text-slate-400 hover:text-white">
+                                    <button onClick={() => { setEditingQuiz(null); setShowAIModal(false); }} className="text-slate-400 hover:text-white ml-2">
                                         <X className="w-6 h-6" />
                                     </button>
                                 </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                {/* AI Generator Inline Panel */}
+                                {showAIModal && (
+                                    <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/30 p-5 rounded-2xl animate-fade-in-down">
+                                        <div className="flex items-center gap-2 mb-3 cursor-pointer" onClick={() => setShowAIModal(false)}>
+                                            <BrainCircuit className="w-5 h-5 text-indigo-400" />
+                                            <h4 className="font-bold text-indigo-400">Generador con Inteligencia Artificial</h4>
+                                        </div>
+                                        <p className="text-sm text-slate-300 mb-4">
+                                            Escribe un temario corto o pega el texto de una lección. La IA se encargará de destilar la información y crear preguntas con 4 opciones.
+                                        </p>
+                                        <form onSubmit={handleGenerateWithAI} className="space-y-4">
+                                            <div>
+                                                <textarea 
+                                                    required 
+                                                    value={aiPrompt} 
+                                                    onChange={e => setAiPrompt(e.target.value)}
+                                                    placeholder="Ej: Introduce el texto de una lección o indica un tema como 'La Revolución Industrial y sus consecuencias'. Sé descriptivo."
+                                                    className="w-full bg-slate-950 border border-indigo-500/30 rounded-xl p-3 text-white focus:ring-1 focus:ring-indigo-500 outline-none h-28 resize-none custom-scrollbar text-sm"
+                                                    disabled={isGeneratingAI}
+                                                />
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+                                                <div className="w-full sm:w-32">
+                                                    <label className="text-xs font-bold text-indigo-400/80 uppercase mb-1 block">Nº Preguntas</label>
+                                                    <input 
+                                                        type="number" min="1" max="20" required 
+                                                        value={aiQuestionCount} 
+                                                        onChange={e => setAiQuestionCount(parseInt(e.target.value))} 
+                                                        className="w-full bg-slate-950 border border-indigo-500/30 rounded-lg p-2.5 text-white outline-none focus:border-indigo-500 disabled:opacity-50" 
+                                                        disabled={isGeneratingAI}
+                                                    />
+                                                </div>
+                                                <div className="flex-1 flex justify-end gap-3">
+                                                    <button type="submit" disabled={isGeneratingAI} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-lg font-bold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20">
+                                                        {isGeneratingAI ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
+                                                        {isGeneratingAI ? 'Procesando...' : 'Generar Cuestionario'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                )}
+
                                 {/* Form to add a new question */}
                                 <form onSubmit={handleAddQuestion} className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-4">
                                     <div>

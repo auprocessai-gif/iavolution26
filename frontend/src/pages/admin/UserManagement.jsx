@@ -381,21 +381,19 @@ const UserManagement = () => {
     };
 
     const handleDeleteUser = async (user) => {
-        if (!await showConfirm(`¿ESTÁS SEGURO? Esta acción eliminará el PERFIL y MATRÍCULAS de ${user.name || user.email}. El usuario ya no podrá entrar.`, 'Eliminar Usuario')) return;
+        if (!await showConfirm(`¿ESTÁS SEGURO? Esta acción eliminará COMPLETAMENTE a ${user.name || user.email} de la plataforma (perfil, matrículas y cuenta de acceso). Esta acción NO se puede deshacer.`, 'Eliminar Usuario')) return;
 
         try {
             const { error } = await supabase
                 .schema('iavolution')
-                .from('profiles')
-                .delete()
-                .eq('id', user.id);
+                .rpc('delete_user_completely', { target_user_id: user.id });
 
             if (error) throw error;
-            await showAlert('Usuario eliminado con éxito.', 'success');
+            await showAlert('Usuario eliminado completamente de la plataforma.', 'success');
             fetchProfiles();
         } catch (err) {
             console.error(err);
-            await showAlert('Error al eliminar el usuario.', 'error');
+            await showAlert('Error al eliminar el usuario: ' + (err.message || 'Inténtalo de nuevo'), 'error');
         }
     };
 
