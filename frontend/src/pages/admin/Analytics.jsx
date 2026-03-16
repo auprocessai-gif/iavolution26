@@ -237,8 +237,8 @@ const Analytics = () => {
     }, [metrics]);
 
     const exportCSV = () => {
-        const h = "Nombre,Email,Progreso,Nota,Tiempo\n";
-        const r = filtered.map(m => `${m.name},${m.email},${m.progress_percent}%,${m.final_grade_10},${m.total_minutes_spent}`).join("\n");
+        const h = "Nombre,Email,Progreso,Tareas,Quizzes,Proyecto,Nota,Tiempo\n";
+        const r = filtered.map(m => `${m.name},${m.email},${m.progress_percent}%,${m.avg_task_100}%,${m.avg_quiz_10}/10,${m.project_grade}/10,${m.final_grade_10},${m.total_minutes_spent}`).join("\n");
         const blob = new Blob([h + r], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -407,6 +407,7 @@ const Analytics = () => {
                                 <th className="px-6 py-5 text-center">Progreso</th>
                                 <th className="px-6 py-5 text-center">Tareas</th>
                                 <th className="px-6 py-5 text-center">Quizzes</th>
+                                <th className="px-6 py-5 text-center">Proyecto</th>
                                 <th className="px-6 py-5 text-center">Tiempo</th>
                                 <th className="px-6 py-5 text-center">Últ. Acceso</th>
                                 <th className="px-6 py-5 text-center">Nota Final</th>
@@ -435,6 +436,11 @@ const Analytics = () => {
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         <span className="text-xs font-bold text-slate-300">{m.avg_quiz_10 || 0}/10</span>
+                                    </td>
+                                    <td className="px-6 py-4 text-center">
+                                        <span className={`text-xs font-bold ${m.project_status === 'graded' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                            {m.project_grade || 0}/10
+                                        </span>
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         <span className="text-xs font-bold text-slate-400">
@@ -511,19 +517,26 @@ const Analytics = () => {
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Tareas Entregadas</p>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Tareas</p>
                                     <div className="flex items-end gap-2 text-indigo-400">
                                         <FileText className="w-5 h-5 mb-1" />
                                         <span className="text-xl font-black">{selectedStudent.avg_task_100}%</span>
                                     </div>
                                 </div>
                                 <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Puntos Quizzes</p>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Quizzes</p>
                                     <div className="flex items-end gap-2 text-amber-400">
                                         <Target className="w-5 h-5 mb-1" />
                                         <span className="text-xl font-black">{selectedStudent.avg_quiz_10}/10</span>
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Proyecto</p>
+                                    <div className="flex items-end gap-2 text-emerald-400">
+                                        <Zap className="w-5 h-5 mb-1" />
+                                        <span className="text-xl font-black">{selectedStudent.project_grade}/10</span>
                                     </div>
                                 </div>
                             </div>
