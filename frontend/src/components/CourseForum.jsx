@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { MessageSquare, Plus, Loader2, User, ChevronRight, Pin, ArrowLeft, Send, Sparkles, Brain, ShieldCheck, AlertCircle } from 'lucide-react';
+import { MessageSquare, Plus, Loader2, User, ChevronRight, Pin, ArrowLeft, Send, Sparkles, Brain, ShieldCheck, AlertCircle, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getGeminiResponse } from '../lib/gemini';
 import { useModal } from '../contexts/ModalContext';
