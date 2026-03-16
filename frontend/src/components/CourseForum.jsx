@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { MessageSquare, Plus, Loader2, User, ChevronRight, Pin, ArrowLeft, Send } from 'lucide-react';
+import { MessageSquare, Plus, Loader2, User, ChevronRight, Pin, ArrowLeft, Send, Sparkles, Brain, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { getGeminiResponse } from '../lib/gemini';
+import { useModal } from '../contexts/ModalContext';
 
 const CourseForum = ({ courseId }) => {
     const { user, profile } = useAuth();
@@ -16,6 +18,13 @@ const CourseForum = ({ courseId }) => {
     const [newTopicTitle, setNewTopicTitle] = useState('');
     const [newTopicContent, setNewTopicContent] = useState('');
     const [newReplyContent, setNewReplyContent] = useState('');
+    const { showAlert } = useModal();
+
+    // AI States
+    const [isSummarizing, setIsSummarizing] = useState(false);
+    const [topicSummary, setTopicSummary] = useState('');
+    const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
+    const [moderating, setModerating] = useState(false);
 
     useEffect(() => {
         fetchTopics();
@@ -74,7 +83,19 @@ const CourseForum = ({ courseId }) => {
         if (!newTopicTitle.trim() || !newTopicContent.trim() || isPosting) return;
 
         setIsPosting(true);
+        setModerating(true);
         try {
+            // AI Moderation for Title and Content
+            const modSys = "Eres un moderador de IA para una academia profesional. Evalúa si el título y contenido son aptos (respetuosos, sin spam, sin insultos). Responde 'OK' si es apto o un breve mensaje de error si no lo es.";
+            const modResp = await getGeminiResponse(`Título: ${newTopicTitle.trim()}\nContenido: ${newTopicContent.trim()}`, modSys);
+            
+            if (modResp.toUpperCase().trim() !== 'OK') {
+                showAlert(`Tu tema ha sido filtrado: ${modResp}`, 'warning');
+                setIsPosting(false);
+                setModerating(false);
+                return;
+            }
+
             // 1. Create Topic
             const { data: topicData, error: topicError } = await supabase
                 .schema('iavolution')
@@ -109,6 +130,7 @@ const CourseForum = ({ courseId }) => {
             console.error('Error creating topic:', err);
         } finally {
             setIsPosting(false);
+            setModerating(false);
         }
     };
 
@@ -117,7 +139,19 @@ const CourseForum = ({ courseId }) => {
         if (!newReplyContent.trim() || isPosting) return;
 
         setIsPosting(true);
+        setModerating(true);
         try {
+            // AI Moderation
+            const modSys = "Eres un moderador de IA para una academia profesional. Evalúa si el mensaje es apto (comportamiento respetuoso, sin spam, sin insultos). Responde 'OK' si es apto o un breve mensaje de error si no lo es.";
+            const modResp = await getGeminiResponse(newReplyContent.trim(), modSys);
+            
+            if (modResp.toUpperCase().trim() !== 'OK') {
+                showAlert(`Tu mensaje ha sido filtrado: ${modResp}`, 'warning');
+                setIsPosting(false);
+                setModerating(false);
+                return;
+            }
+
             const { error } = await supabase
                 .schema('iavolution')
                 .from('forum_posts')
@@ -135,6 +169,37 @@ const CourseForum = ({ courseId }) => {
             console.error('Error adding reply:', err);
         } finally {
             setIsPosting(false);
+            setModerating(false);
+        }
+    };
+
+    const generateSummary = async () => {
+        if (!posts.length || isSummarizing) return;
+        setIsSummarizing(true);
+        try {
+            const sys = "Eres un tutor IA. Resume esta discusión del foro en 3 puntos clave destacando la duda principal y la solución si la hay.";
+            const ctx = posts.map(p => `${p.profiles?.name}: ${p.content}`).join('\n---\n');
+            const resp = await getGeminiResponse("Resume esta discusión:", sys + "\n\nDISCUSIÓN:\n" + ctx);
+            setTopicSummary(resp);
+        } catch (error) {
+            showAlert('Error al generar resumen.', 'error');
+        } finally {
+            setIsSummarizing(false);
+        }
+    };
+
+    const suggestReply = async () => {
+        if (!posts.length || isGeneratingSuggestion) return;
+        setIsGeneratingSuggestion(true);
+        try {
+            const sys = "Eres un profesor mentor. Basándote en el hilo del foro, propón una respuesta profesional, motivadora y resolutiva. Máximo 3 frases.";
+            const ctx = posts.map(p => `${p.profiles?.name}: ${p.content}`).join('\n---\n');
+            const resp = await getGeminiResponse("Propón una respuesta para el profesor:", sys + "\n\nCONTEXTO:\n" + ctx);
+            setNewReplyContent(resp);
+        } catch (error) {
+            showAlert('Error al generar sugerencia.', 'error');
+        } finally {
+            setIsGeneratingSuggestion(false);
         }
     };
 
@@ -158,13 +223,42 @@ const CourseForum = ({ courseId }) => {
                 </button>
 
                 <div className="bg-slate-900/50 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-                    <div className="p-8 border-b border-slate-800 bg-slate-900/80">
-                        <div className="flex items-center gap-2 mb-2">
-                             {selectedTopic.is_pinned && <Pin className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />}
-                             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">DISCUSIÓN</span>
+                    <div className="p-8 border-b border-slate-800 bg-slate-900/80 flex justify-between items-center">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                 {selectedTopic.is_pinned && <Pin className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />}
+                                 <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">DISCUSIÓN</span>
+                            </div>
+                            <h2 className="text-2xl font-black text-white">{selectedTopic.title}</h2>
                         </div>
-                        <h2 className="text-2xl font-black text-white">{selectedTopic.title}</h2>
+                        <button 
+                            onClick={generateSummary}
+                            disabled={isSummarizing || posts.length < 2}
+                            className="bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-500/20 transition-all flex items-center gap-2 shadow-xl shadow-indigo-600/5 disabled:opacity-50"
+                        >
+                            {isSummarizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                            Resumen IA
+                        </button>
                     </div>
+
+                    {topicSummary && (
+                        <div className="px-8 py-6 bg-indigo-500/5 border-b border-slate-800 animate-in slide-in-from-top duration-300 relative">
+                            <button onClick={() => setTopicSummary('')} className="absolute top-4 right-4 text-slate-500 hover:text-white">
+                                <X className="w-4 h-4" />
+                            </button>
+                            <div className="flex items-start gap-4">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0 border border-indigo-500/30">
+                                    <Brain className="w-4 h-4 text-indigo-400" />
+                                </div>
+                                <div>
+                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Resumen del Hilo</h4>
+                                    <div className="text-sm text-slate-300 leading-relaxed italic">
+                                        {topicSummary.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="p-8 space-y-8">
                         {posts.map((post, index) => {
@@ -207,14 +301,33 @@ const CourseForum = ({ courseId }) => {
 
                     <div className="p-8 bg-slate-950 border-t border-slate-800">
                         <form onSubmit={handleCreateReply} className="space-y-4">
-                            <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Añadir una respuesta</h4>
+                            <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                    {moderating ? <ShieldCheck className="w-4 h-4 text-emerald-500 animate-pulse" /> : <MessageSquare className="w-4 h-4" />}
+                                    {moderating ? 'Validando con IA...' : 'Añadir una respuesta'}
+                                </h4>
+                                {(profile?.roleName === 'admin' || profile?.roleName === 'teacher') && (
+                                    <button 
+                                        type="button"
+                                        onClick={suggestReply}
+                                        disabled={isGeneratingSuggestion || !posts.length}
+                                        className="text-[9px] font-black text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 uppercase tracking-widest group"
+                                    >
+                                        <Brain className="w-3 h-3 group-hover:scale-110 transition-transform" />
+                                        Sugerir Respuesta IA
+                                    </button>
+                                )}
+                            </div>
                             <textarea 
                                 value={newReplyContent}
                                 onChange={e => setNewReplyContent(e.target.value)}
                                 placeholder="Escribe tu respuesta aquí..."
                                 className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none transition-all min-h-[120px] font-medium"
                             />
-                            <div className="flex justify-end">
+                            <div className="flex justify-between items-center">
+                                <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                                    <ShieldCheck className="w-3 h-3" /> Moderación activa por IA
+                                </p>
                                 <button
                                     type="submit"
                                     disabled={!newReplyContent.trim() || isPosting}
