@@ -47,12 +47,27 @@ const Dashboard = () => {
 
             if (enrError) throw enrError;
 
-            // 2. Fetch courses where user is the teacher
-            const { data: teacherCourses, error: teacherError } = await supabase
-                .schema('iavolution')
-                .from('courses')
-                .select('id, title, description, cover_image_url, status')
-                .eq('teacher_id', user.id);
+            // 2. Fetch courses where user is the teacher or ALL courses if admin
+            let teacherCourses = [];
+            let teacherError = null;
+
+            if (profile?.roleName === 'admin') {
+                const { data, error } = await supabase
+                    .schema('iavolution')
+                    .from('courses')
+                    .select('id, title, description, cover_image_url, status')
+                    .eq('status', 'published');
+                teacherCourses = data || [];
+                teacherError = error;
+            } else {
+                const { data, error } = await supabase
+                    .schema('iavolution')
+                    .from('courses')
+                    .select('id, title, description, cover_image_url, status')
+                    .eq('teacher_id', user.id);
+                teacherCourses = data || [];
+                teacherError = error;
+            }
 
             if (teacherError) throw teacherError;
 

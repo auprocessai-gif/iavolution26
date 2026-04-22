@@ -532,7 +532,7 @@ const CoursePlayer = () => {
         );
     }
 
-    const isStaff = profile?.role === 'admin' || profile?.role === 'teacher' || profile?.role === 'manager';
+    const isStaff = profile?.roleName === 'admin' || profile?.roleName === 'teacher' || profile?.roleName === 'manager';
     const isRestricted = !isStaff && !enrollment;
 
     if (isRestricted) {
