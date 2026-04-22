@@ -360,7 +360,11 @@ const CoursePlayer = () => {
             // Generic video element for direct file URLs
             return (
                 <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-2xl bg-black flex items-center justify-center">
-                    <video controls className="w-full max-h-full">
+                    <video 
+                        controls 
+                        className="w-full max-h-full"
+                        poster={course?.cover_image_url}
+                    >
                         <source src={url} />
                         Tu navegador no soporta el tag de video.
                     </video>
@@ -388,11 +392,29 @@ const CoursePlayer = () => {
             );
         }
 
-        // Default: If no materials or unknown
+        // Default: If no materials or unknown, show course cover
         return (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-20 text-center">
-                <PlayCircle className="w-16 h-16 text-slate-700 mx-auto mb-4" />
-                <p className="text-slate-500 italic">Esta lección no tiene contenido visual. Consulta los materiales adjuntos.</p>
+            <div className="relative aspect-video w-full rounded-2xl overflow-hidden shadow-2xl bg-slate-900 border border-slate-800 flex items-center justify-center group">
+                {course?.cover_image_url ? (
+                    <>
+                        <img 
+                            src={course.cover_image_url} 
+                            alt={course.title}
+                            className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
+                        <div className="relative z-10 text-center p-6">
+                            <BrainCircuit className="w-16 h-16 text-indigo-400 mx-auto mb-4 animate-pulse" />
+                            <h2 className="text-2xl font-black text-white mb-2">{course.title}</h2>
+                            <p className="text-slate-300 italic max-w-md mx-auto">Selecciona una lección con contenido de video para comenzar o revisa los materiales de soporte abajo.</p>
+                        </div>
+                    </>
+                ) : (
+                    <div className="text-center p-20">
+                        <PlayCircle className="w-16 h-16 text-slate-700 mx-auto mb-4" />
+                        <p className="text-slate-500 italic">Esta lección no tiene contenido visual. Consulta los materiales adjuntos.</p>
+                    </div>
+                )}
             </div>
         );
     };
