@@ -394,19 +394,25 @@ const CoursePlayer = () => {
 
         // Default: If no materials or unknown, show course cover
         return (
-            <div className="relative aspect-video w-full rounded-2xl overflow-hidden shadow-2xl bg-slate-900 border border-slate-800 flex items-center justify-center group">
+            <div className="relative aspect-video w-full rounded-[2.5rem] overflow-hidden shadow-2xl bg-slate-900 border border-slate-800 flex items-center justify-center group">
                 {course?.cover_image_url ? (
                     <>
                         <img 
                             src={course.cover_image_url} 
                             alt={course.title}
-                            className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700"
+                            className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform duration-[2000ms]"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
-                        <div className="relative z-10 text-center p-6">
-                            <BrainCircuit className="w-16 h-16 text-indigo-400 mx-auto mb-4 animate-pulse" />
-                            <h2 className="text-2xl font-black text-white mb-2">{course.title}</h2>
-                            <p className="text-slate-300 italic max-w-md mx-auto">Selecciona una lección con contenido de video para comenzar o revisa los materiales de soporte abajo.</p>
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent"></div>
+                        <div className="relative z-10 text-center p-10 transform group-hover:translate-y-[-10px] transition-transform duration-700">
+                            <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-indigo-600/20 backdrop-blur-xl border border-indigo-500/30 mb-6 shadow-2xl">
+                                <BrainCircuit className="w-10 h-10 text-indigo-400 animate-pulse" />
+                            </div>
+                            <h2 className="text-3xl md:text-5xl font-black text-white mb-4 tracking-tighter drop-shadow-2xl">
+                                {course.title}
+                            </h2>
+                            <p className="text-indigo-200 font-medium text-lg max-w-2xl mx-auto opacity-90 drop-shadow-lg">
+                                Esta lección no tiene video. Explora los materiales descargables a continuación para profundizar en el tema.
+                            </p>
                         </div>
                     </>
                 ) : (
