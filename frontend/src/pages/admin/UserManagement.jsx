@@ -305,8 +305,7 @@ const UserManagement = () => {
 
             const newUserId = signUpData.user.id;
 
-            // 2. Explicitly update the profile to ensure the correct role is assigned
-            // (Bypassing the trigger default if necessary)
+            // 2. Get the role_id for the selected role
             const { data: roleData, error: roleError } = await supabase
                 .schema('iavolution')
                 .from('roles')
@@ -314,12 +313,24 @@ const UserManagement = () => {
                 .eq('name', role)
                 .single();
 
-            if (!roleError && roleData) {
-                await supabase
-                    .schema('iavolution')
-                    .from('profiles')
-                    .update({ role_id: roleData.id })
-                    .eq('id', newUserId);
+            if (roleError) console.warn('Could not fetch role:', roleError);
+
+            // 3. Upsert profile explicitly — garantiza que el perfil existe
+            // aunque el trigger de DB tarde o falle silenciosamente.
+            const { error: profileError } = await supabase
+                .schema('iavolution')
+                .from('profiles')
+                .upsert({
+                    id: newUserId,
+                    email: email,
+                    name: name,
+                    role_id: roleData?.id || null,
+                    status: 'active'
+                }, { onConflict: 'id' });
+
+            if (profileError) {
+                console.error('Profile upsert error:', profileError);
+                // No es fatal: el trigger puede haberlo creado ya, continuamos
             }
 
             // 3. Optionally enroll in course + edition
@@ -344,10 +355,10 @@ const UserManagement = () => {
             setCreateEditionId('');
             setCreateEditions([]);
             
-            // Wait a bit for the trigger to finish before refreshing
+            // Wait for DB to settle and refresh
             setTimeout(() => {
                 fetchProfiles();
-            }, 800);
+            }, 500);
         } catch (err) {
             console.error(err);
             if (err.message?.includes('already registered')) {
