@@ -343,7 +343,11 @@ const UserManagement = () => {
             setCreateCourseId('');
             setCreateEditionId('');
             setCreateEditions([]);
-            fetchProfiles(); // Refresh list
+            
+            // Wait a bit for the trigger to finish before refreshing
+            setTimeout(() => {
+                fetchProfiles();
+            }, 800);
         } catch (err) {
             console.error(err);
             if (err.message?.includes('already registered')) {
@@ -398,8 +402,11 @@ const UserManagement = () => {
     };
 
     const filteredProfiles = profiles.filter(p => {
-        const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.email?.toLowerCase().includes(searchTerm.toLowerCase());
+        const name = (p.name || '').toLowerCase();
+        const email = (p.email || '').toLowerCase();
+        const search = searchTerm.toLowerCase();
+        
+        const matchesSearch = name.includes(search) || email.includes(search);
         const matchesRole = roleFilter === 'all' || p.roles?.name === roleFilter;
         return matchesSearch && matchesRole;
     });

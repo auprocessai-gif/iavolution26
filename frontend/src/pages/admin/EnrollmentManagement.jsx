@@ -208,10 +208,12 @@ const EnrollmentManagement = () => {
         }
     };
 
-    const filteredStudents = students.filter(s =>
-        s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredStudents = students.filter(s => {
+        const name = (s.name || '').toLowerCase();
+        const email = (s.email || '').toLowerCase();
+        const search = searchTerm.toLowerCase();
+        return name.includes(search) || email.includes(search);
+    });
 
     const filteredCoursesList = courses.filter(c =>
         c.title?.toLowerCase().includes(courseSearch.toLowerCase())
