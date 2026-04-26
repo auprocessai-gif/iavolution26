@@ -68,15 +68,22 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
         }
 
         try {
+            // Limpiar campos opcionales antes de insertar
+            const eventToInsert = {
+                title: newEvent.title,
+                description: newEvent.description || null,
+                event_type: newEvent.event_type,
+                start_time: newEvent.start_time,
+                end_time: newEvent.end_time || null,
+                course_id: courseId,
+                edition_id: editionId || null,
+                created_by: profile.id
+            };
+
             const { error } = await supabase
                 .schema('iavolution')
                 .from('events')
-                .insert([{
-                    ...newEvent,
-                    course_id: courseId,
-                    edition_id: editionId || null,
-                    created_by: profile.id
-                }]);
+                .insert([eventToInsert]);
 
             if (error) throw error;
 
