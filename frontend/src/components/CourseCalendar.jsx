@@ -73,8 +73,8 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                 title: newEvent.title,
                 description: newEvent.description || null,
                 event_type: newEvent.event_type,
-                start_time: newEvent.start_time,
-                end_time: newEvent.end_time || null,
+                start_time: new Date(newEvent.start_time).toISOString(),
+                end_time: newEvent.end_time ? new Date(newEvent.end_time).toISOString() : null,
                 course_id: courseId,
                 edition_id: editionId || null,
                 created_by: profile.id
