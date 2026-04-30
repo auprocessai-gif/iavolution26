@@ -856,6 +856,19 @@ const CoursePlayer = () => {
                                                                 <div>
                                                                     <h4 className="font-bold text-white text-lg">{asn.title}</h4>
                                                                     <p className="text-slate-400 text-sm mt-1 whitespace-pre-wrap">{asn.instructions}</p>
+                                                                    {asn.file_url && (
+                                                                        <div className="mt-3">
+                                                                            <a
+                                                                                href={asn.file_url}
+                                                                                target="_blank"
+                                                                                rel="noreferrer"
+                                                                                className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+                                                                            >
+                                                                                <FileText className="w-4 h-4" />
+                                                                                Descargar archivo adjunto
+                                                                            </a>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                                 <span className="bg-slate-800 text-slate-300 px-3 py-1 rounded-full text-xs font-bold">
                                                                     Máx: {asn.max_points} pts
@@ -1048,6 +1061,17 @@ const CoursePlayer = () => {
                                 <div>
                                     <h3 className="text-xl font-bold text-white">Entregar: {submittingAssignment.title}</h3>
                                     <p className="text-slate-400 text-sm mt-1">{submittingAssignment.instructions}</p>
+                                    {submittingAssignment.file_url && (
+                                        <a
+                                            href={submittingAssignment.file_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm mt-2 font-semibold"
+                                        >
+                                            <FileText className="w-4 h-4" />
+                                            Ver archivo adjunto
+                                        </a>
+                                    )}
                                 </div>
                                 <button onClick={() => setSubmittingAssignment(null)} className="text-slate-400 hover:text-white">
                                     <X className="w-6 h-6" />
