@@ -94,7 +94,9 @@ const UserManagement = () => {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setProfiles(data || []);
+            // Filter to show only users belonging to Iavolution
+            const filteredProfiles = (data || []).filter(p => !p.app || p.app === 'iavolution');
+            setProfiles(filteredProfiles);
         } catch (err) {
             console.error('Error fetching profiles:', err);
         } finally {
@@ -296,7 +298,7 @@ const UserManagement = () => {
                 email,
                 password,
                 options: {
-                    data: { name, role: role || 'student' }
+                    data: { name, role: role || 'student', app: 'iavolution' }
                 }
             });
 
@@ -325,7 +327,8 @@ const UserManagement = () => {
                     email: email,
                     name: name,
                     role_id: roleData?.id || null,
-                    status: 'active'
+                    status: 'active',
+                    app: 'iavolution'
                 }, { onConflict: 'id' });
 
             if (profileError) {

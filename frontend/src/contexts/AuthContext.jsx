@@ -13,18 +13,27 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         // Check active session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            if (session?.user) {
-                fetchProfile(session.user.id);
-            } else {
+        supabase.auth.getSession()
+            .then(({ data, error }) => {
+                if (error) {
+                    console.error("Error getting session:", error);
+                }
+                const session = data?.session || null;
+                setSession(session);
+                setUser(session?.user ?? null);
+                if (session?.user) {
+                    fetchProfile(session.user.id);
+                } else {
+                    setLoading(false);
+                }
+            })
+            .catch(err => {
+                console.error("Exception getting session:", err);
                 setLoading(false);
-            }
-        });
+            });
 
         // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const authChangeResult = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
@@ -35,12 +44,16 @@ export const AuthProvider = ({ children }) => {
             }
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            if (authChangeResult?.data?.subscription) {
+                authChangeResult.data.subscription.unsubscribe();
+            }
+        };
     }, []);
 
     const fetchProfile = async (userId) => {
         try {
-            const { data, error } = await supabase
+            let { data, error } = await supabase
                 .schema('iavolution')
                 .from('profiles')
                 .select(`
@@ -54,8 +67,38 @@ export const AuthProvider = ({ children }) => {
                 .single();
 
             if (error) {
-                console.error("Error fetching profile:", error);
-            } else {
+                if (error.code === 'PGRST116') {
+                    console.warn("Profile not found. Attempting to auto-recover...");
+                    // Try to auto-create missing profile
+                    const { data: authData } = await supabase.auth.getUser();
+                    if (authData?.user && authData.user.id === userId) {
+                        const { data: roleData } = await supabase.schema('iavolution').from('roles').select('id').eq('name', 'student').single();
+                        if (roleData) {
+                            const { data: newProfile, error: insertError } = await supabase.schema('iavolution').from('profiles').insert([{
+                                id: userId,
+                                email: authData.user.email,
+                                name: authData.user.user_metadata?.name || authData.user.user_metadata?.full_name || authData.user.email,
+                                role_id: roleData.id,
+                                status: 'active',
+                                app: 'iavolution'
+                            }]).select(`*, roles(name, description)`).single();
+                            
+                            if (!insertError && newProfile) {
+                                console.log("Profile auto-recovered successfully.");
+                                data = newProfile;
+                                error = null;
+                            }
+                        }
+                    }
+                }
+                
+                if (error) {
+                    console.error("Error fetching profile:", error);
+                    return;
+                }
+            }
+            
+            if (data) {
                 // Check if user is blocked
                 if (data.status === 'blocked') {
                     console.warn("User is blocked. Logging out...");
