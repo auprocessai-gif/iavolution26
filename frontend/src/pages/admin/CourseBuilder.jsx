@@ -536,7 +536,7 @@ const CourseBuilder = () => {
 
     const fetchQuizQuestions = async (quizId) => {
         try {
-            const { data, error } = await supabase.schema('iavolution').from('quiz_questions').select('*').eq('quiz_id', quizId).order('id');
+            const { data, error } = await supabase.schema('iavolution').from('quiz_questions').select('*').eq('quiz_id', quizId).order('order');
             if (error) throw error;
             setQuizQuestions(data || []);
         } catch (err) { console.error(err); }
@@ -547,9 +547,14 @@ const CourseBuilder = () => {
         if (!newQuestion.question_text.trim()) return;
         setIsSavingQuestion(true);
         try {
+            const nextOrder = quizQuestions.length > 0
+                ? Math.max(...quizQuestions.map(q => q.order || 0)) + 1
+                : 0;
+
             const { error } = await supabase.schema('iavolution').from('quiz_questions').insert([{
                 ...newQuestion,
-                quiz_id: editingQuiz.id
+                quiz_id: editingQuiz.id,
+                order: nextOrder
             }]);
             if (error) throw error;
             setNewQuestion({ question_text: '', options: ['', '', '', ''], correct_answer: 0, points: 10 });
@@ -586,12 +591,17 @@ const CourseBuilder = () => {
                 if (!parts || parts.length < 6) continue;
 
                 const clean = parts.map(p => p.replace(/^"|"$/g, '').trim());
+                const currentMaxOrder = questions.length > 0 
+                    ? Math.max(...questions.map(q => q.order)) 
+                    : (quizQuestions.length > 0 ? Math.max(...quizQuestions.map(q => q.order || 0)) : -1);
+
                 questions.push({
                     quiz_id: editingQuiz.id,
                     question_text: clean[0],
                     options: [clean[1], clean[2], clean[3], clean[4]],
                     correct_answer: parseInt(clean[5]) || 0,
-                    points: parseInt(clean[6]) || 10
+                    points: parseInt(clean[6]) || 10,
+                    order: currentMaxOrder + 1
                 });
             }
 
@@ -656,12 +666,17 @@ No devuelvas NADA MÁS que el JSON puro, sin texto adicional, sin formato de có
             }
 
             // Map, validate, and set foreign key
-            const insertData = questionsObj.map(q => ({
+            const startOrder = quizQuestions.length > 0 
+                ? Math.max(...quizQuestions.map(q => q.order || 0)) + 1 
+                : 0;
+
+            const insertData = questionsObj.map((q, idx) => ({
                 quiz_id: editingQuiz.id,
                 question_text: q.question_text || 'Pregunta sin texto',
                 options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ['A', 'B', 'C', 'D'],
                 correct_answer: (typeof q.correct_answer === 'number' && q.correct_answer >= 0 && q.correct_answer <= 3) ? q.correct_answer : 0,
-                points: typeof q.points === 'number' ? q.points : 10
+                points: typeof q.points === 'number' ? q.points : 10,
+                order: startOrder + idx
             }));
 
             const { error } = await supabase.schema('iavolution').from('quiz_questions').insert(insertData);

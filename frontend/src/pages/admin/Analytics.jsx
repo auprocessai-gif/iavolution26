@@ -195,6 +195,9 @@ const Analytics = () => {
                 });
 
                 if (!error) sentCount++;
+                
+                // Add a 1.5s delay to avoid Gemini rate limits
+                await new Promise(r => setTimeout(r, 1500));
             }
 
             setScanResults({ total: atRisk.length, sent: sentCount, message: `Escaneo completado. Se han enviado ${sentCount} notificaciones personalizadas.` });
@@ -238,7 +241,7 @@ const Analytics = () => {
 
     const exportCSV = () => {
         const h = "Nombre,Email,Progreso,Tareas,Quizzes,Proyecto,Nota,Tiempo\n";
-        const r = filtered.map(m => `${m.name},${m.email},${m.progress_percent}%,${m.avg_task_100}%,${m.avg_quiz_10}/10,${m.project_grade}/10,${m.final_grade_10},${m.total_minutes_spent}`).join("\n");
+        const r = filtered.map(m => `${m.name},${m.email},${m.progress_percent}%,${Math.round(m.avg_task_100 || 0)}%,${m.avg_quiz_10}/10,${m.project_grade}/10,${m.final_grade_10},${m.total_minutes_spent}`).join("\n");
         const blob = new Blob([h + r], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -432,7 +435,7 @@ const Analytics = () => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-center">
-                                        <span className="text-xs font-bold text-slate-300">{m.avg_task_100 || 0}%</span>
+                                        <span className="text-xs font-bold text-slate-300">{Math.round(m.avg_task_100 || 0)}%</span>
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         <span className="text-xs font-bold text-slate-300">{m.avg_quiz_10 || 0}/10</span>
