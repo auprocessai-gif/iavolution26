@@ -177,27 +177,48 @@ const Analytics = () => {
                 const student = atRisk[i];
                 setScanningProgress(Math.round(((i + 1) / atRisk.length) * 100));
 
-                const sys = `Eres un asistente educativo de IAVolution. Tu objetivo es enviar una notificación privada y motivadora a un alumno que está teniendo dificultades. 
-                Sé empático, profesional y breve (máximo 150 caracteres para que quepa en una notificación). 
-                Usa el nombre del alumno. Si tiene nota baja, menciónalo suavemente. Si tiene poca actividad, anímale a volver.`;
-                
-                const ctx = `Alumno: ${student.name}. Nota media: ${student.final_grade_10}. Progreso: ${student.progress_percent}%. Último acceso: ${student.last_seen || 'Nunca'}.`;
-                
-                const aiMessage = await getGeminiResponse(ctx, sys);
+                let aiMessage;
+                try {
+                    const sys = `Eres un asistente educativo de IAVolution. Tu objetivo es enviar una notificación privada y motivadora a un alumno que está teniendo dificultades. 
+                    Sé empático, profesional y breve (máximo 150 caracteres para que quepa en una notificación). 
+                    Usa el nombre del alumno. Si tiene nota baja, menciónalo suavemente. Si tiene poca actividad, anímale a volver.`;
+                    
+                    const ctx = `Alumno: ${student.name}. Nota media: ${student.final_grade_10}. Progreso: ${student.progress_percent}%. Último acceso: ${student.last_seen || 'Nunca'}.`;
+                    
+                    aiMessage = await getGeminiResponse(ctx, sys);
+                } catch (aiErr) {
+                    console.warn(`IA no disponible para ${student.name}, usando mensaje predefinido:`, aiErr);
+                    const gradeNum = parseFloat(student.final_grade_10) || 0;
+                    const progressNum = parseInt(student.progress_percent) || 0;
+                    const firstName = student.name?.split(' ')[0] || 'alumno/a';
+                    if (progressNum < 20) {
+                        aiMessage = `Hola ${firstName}! 👋 Te echamos de menos en el curso. ¡Vuelve cuando puedas, estamos aquí para ayudarte!`;
+                    } else if (gradeNum < 5) {
+                        aiMessage = `Hola ${firstName}! 💪 Recuerda que puedes mejorar tu nota entregando las tareas pendientes. ¡Tú puedes!`;
+                    } else {
+                        aiMessage = `Hola ${firstName}! 🌟 Llevas un tiempo sin conectarte. ¡Anímate a retomar el curso, te esperamos!`;
+                    }
+                }
 
-                // Insert into notifications
-                const { error } = await supabase.schema('iavolution').from('notifications').insert({
-                    user_id: student.user_id,
-                    type: 'ai_suggestion',
-                    title: '💡 Sugerencia de tu Tutor IA',
-                    message: aiMessage,
-                    link: `/dashboard/player/${student.course_id}`
-                });
+                try {
+                    const { error } = await supabase.schema('iavolution').from('notifications').insert({
+                        user_id: student.user_id,
+                        type: 'ai_suggestion',
+                        title: '💡 Sugerencia de tu Tutor IA',
+                        message: aiMessage,
+                        link: `/dashboard/player/${student.course_id}`
+                    });
 
-                if (!error) sentCount++;
+                    if (error) {
+                        console.error(`Error insertando notificación para ${student.name}:`, error);
+                    } else {
+                        sentCount++;
+                    }
+                } catch (insertErr) {
+                    console.error(`Excepción insertando notificación para ${student.name}:`, insertErr);
+                }
                 
-                // Add a 1.5s delay to avoid Gemini rate limits
-                await new Promise(r => setTimeout(r, 1500));
+                await new Promise(r => setTimeout(r, 1000));
             }
 
             setScanResults({ total: atRisk.length, sent: sentCount, message: `Escaneo completado. Se han enviado ${sentCount} notificaciones personalizadas.` });
@@ -205,7 +226,7 @@ const Analytics = () => {
 
         } catch (err) {
             console.error('Scan error:', err);
-            showAlert('Error durante el escaneo inteligente.', 'error');
+            showAlert(`Error durante el escaneo: ${err.message || 'Error desconocido'}`, 'error');
         } finally {
             setIsScanning(false);
         }
