@@ -10,7 +10,7 @@ WITH academic_stats AS (
         c.id as course_id,
         COUNT(DISTINCT l.id) as total_lessons,
         COUNT(DISTINCT mat.id) as total_materials,
-        COUNT(DISTINCT a.id) as total_assignments,
+        COUNT(DISTINCT CASE WHEN a.title NOT ILIKE '%proyecto%' THEN a.id END) as total_assignments,
         COUNT(DISTINCT q.id) as total_quizzes
     FROM iavolution.courses c
     LEFT JOIN iavolution.modules m ON c.id = m.course_id
@@ -29,7 +29,7 @@ task_totals AS (
     JOIN iavolution.assignments a ON s.assignment_id = a.id
     JOIN iavolution.lessons l ON a.lesson_id = l.id
     JOIN iavolution.modules m ON l.module_id = m.id
-    WHERE s.grade IS NOT NULL
+    WHERE s.grade IS NOT NULL AND a.title NOT ILIKE '%proyecto%'
     GROUP BY s.user_id, m.course_id
 ),
 quiz_totals AS (
@@ -51,7 +51,20 @@ quiz_totals AS (
     ) user_quiz_max
     GROUP BY user_id, course_id
 ),
-project_grades AS (
+project_grades_from_assignments AS (
+    SELECT 
+        s.user_id,
+        m.course_id,
+        MAX(CAST(s.grade AS NUMERIC)) / 10.0 as project_grade,
+        MAX(CASE WHEN s.grade IS NOT NULL THEN 'graded' ELSE 'submitted' END) as project_status
+    FROM iavolution.submissions s
+    JOIN iavolution.assignments a ON s.assignment_id = a.id
+    JOIN iavolution.lessons l ON a.lesson_id = l.id
+    JOIN iavolution.modules m ON l.module_id = m.id
+    WHERE a.title ILIKE '%proyecto%'
+    GROUP BY s.user_id, m.course_id
+),
+project_grades_from_projects AS (
     SELECT 
         ps.user_id,
         cp.course_id,
@@ -60,6 +73,16 @@ project_grades AS (
     FROM iavolution.project_submissions ps
     JOIN iavolution.course_projects cp ON ps.project_id = cp.id
     GROUP BY ps.user_id, cp.course_id
+),
+project_grades AS (
+    SELECT 
+        COALESCE(pga.user_id, pgp.user_id) as user_id,
+        COALESCE(pga.course_id, pgp.course_id) as course_id,
+        COALESCE(pga.project_grade, pgp.project_grade) as project_grade,
+        COALESCE(pga.project_status, pgp.project_status) as project_status
+    FROM project_grades_from_assignments pga
+    FULL OUTER JOIN project_grades_from_projects pgp 
+        ON pga.user_id = pgp.user_id AND pga.course_id = pgp.course_id
 ),
 session_totals AS (
     SELECT 
