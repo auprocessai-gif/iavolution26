@@ -24,7 +24,8 @@ const students = [
   { no: 20, name: "Beatriz Elena Ibarra Aguirre", email: "elenaibarra1545@gmail.com", profession: "N/A", company: "N/A", role: "N/A", phone: "7850 4097", pass: "IAV2026*4097" },
   { no: 21, name: "Eduardo Wilfredo Ortiz Molina", email: "gestionempresarial@acoyec.com", profession: "N/A", company: "N/A", role: "N/A", phone: "7479 2149", pass: "IAV2026*2149" },
   { no: 22, name: "Erika Valentina Mejia Lopez", email: "erikavalentinamejia@gmail.com", profession: "Lic. Contaduría Publica", company: "N/A", role: "N/A", phone: "7621-9451", pass: "IAV2026*9451" },
-  { no: 23, name: "Lucia Emperatriz Hernández Romero", email: "luemheme@gmail.com", profession: "Lic. Economía y Negocios", company: "Servicios Generales Bursátiles S.A de C.V.", role: "Gerente de Mercadeo y ventas", phone: "7187-3020", pass: "IAV2026*3020" }
+  { no: 23, name: "Lucia Emperatriz Hernández Romero", email: "luemheme@gmail.com", profession: "Lic. Economía y Negocios", company: "Servicios Generales Bursátiles S.A de C.V.", role: "Gerente de Mercadeo y ventas", phone: "7187-3020", pass: "IAV2026*3020" },
+  { no: 24, name: "Héctor Jonathan Serpas Hurtado", email: "hector.serpas@sslogistica.com", profession: "Ingeniero en Sistemas", company: "COASEGUROS", role: "Gerente de Reclamos", phone: "7853-6379", pass: "IAV2026*6379" }
 ];
 
 const courseTitle = "Diplomado en Automatización de Procesos con IA";

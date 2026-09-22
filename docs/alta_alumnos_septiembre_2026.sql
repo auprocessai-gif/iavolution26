@@ -35,7 +35,8 @@ BEGIN
             ('Beatriz Elena Ibarra Aguirre', 'elenaibarra1545@gmail.com', 'IAV2026*4097'),
             ('Eduardo Wilfredo Ortiz Molina', 'gestionempresarial@acoyec.com', 'IAV2026*2149'),
             ('Erika Valentina Mejia Lopez', 'erikavalentinamejia@gmail.com', 'IAV2026*9451'),
-            ('Lucia Emperatriz Hernández Romero', 'luemheme@gmail.com', 'IAV2026*3020')
+            ('Lucia Emperatriz Hernández Romero', 'luemheme@gmail.com', 'IAV2026*3020'),
+            ('Héctor Jonathan Serpas Hurtado', 'hector.serpas@sslogistica.com', 'IAV2026*6379')
         ) AS t(name, email, pass)
     LOOP
         -- 1. Buscar si ya existe en auth.users
@@ -110,12 +111,12 @@ END $$;
 -- Recargar caché de PostgREST
 NOTIFY pgrst, 'reload schema';
 
--- Comprobación final: listado de alumnos de Septiembre 2026
+-- Comprobación final de matriculados en Septiembre 2026
 SELECT 
     p.name AS "Alumno",
     p.email AS "Correo",
-    ce.name AS "Edicion",
-    e.enrolled_at AS "Fecha Matricula"
+    e.created_at AS "Fecha Matricula",
+    ce.name AS "Edicion"
 FROM iavolution.enrollments e
 JOIN iavolution.profiles p ON e.user_id = p.id
 JOIN iavolution.course_editions ce ON e.edition_id = ce.id
