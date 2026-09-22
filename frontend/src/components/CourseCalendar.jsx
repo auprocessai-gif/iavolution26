@@ -21,6 +21,8 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
     const { showAlert, showConfirm } = useModal();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [events, setEvents] = useState([]);
+    const [editions, setEditions] = useState([]);
+    const [selectedEditionFilter, setSelectedEditionFilter] = useState(editionId || 'all');
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
     const [newEvent, setNewEvent] = useState({
@@ -28,8 +30,21 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
         description: '',
         event_type: 'tutoria',
         start_time: '',
-        end_time: ''
+        end_time: '',
+        edition_id: editionId || ''
     });
+
+    useEffect(() => {
+        if (courseId) {
+            supabase
+                .schema('iavolution')
+                .from('course_editions')
+                .select('id, name')
+                .eq('course_id', courseId)
+                .order('created_at', { ascending: false })
+                .then(({ data }) => setEditions(data || []));
+        }
+    }, [courseId]);
 
     const fetchEvents = useCallback(async () => {
         setLoading(true);
@@ -40,9 +55,13 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                 .select('*')
                 .eq('course_id', courseId);
 
-            if (editionId) {
+            if (isAdminView) {
+                if (selectedEditionFilter && selectedEditionFilter !== 'all') {
+                    query = query.or(`edition_id.eq.${selectedEditionFilter},edition_id.is.null`);
+                }
+            } else if (editionId) {
                 query = query.or(`edition_id.eq.${editionId},edition_id.is.null`);
-            } else if (!isAdminView) {
+            } else {
                 query = query.is('edition_id', null);
             }
 
@@ -55,7 +74,7 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
         } finally {
             setLoading(false);
         }
-    }, [courseId, editionId, isAdminView]);
+    }, [courseId, editionId, isAdminView, selectedEditionFilter]);
 
     useEffect(() => {
         fetchEvents();
@@ -68,6 +87,8 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
         }
 
         try {
+            const targetEditionId = newEvent.edition_id || (editionId || (selectedEditionFilter !== 'all' ? selectedEditionFilter : null));
+
             // Limpiar campos opcionales antes de insertar
             const eventToInsert = {
                 title: newEvent.title,
@@ -76,7 +97,7 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                 start_time: new Date(newEvent.start_time).toISOString(),
                 end_time: newEvent.end_time ? new Date(newEvent.end_time).toISOString() : null,
                 course_id: courseId,
-                edition_id: editionId || null,
+                edition_id: targetEditionId || null,
                 created_by: profile.id
             };
 
@@ -89,7 +110,7 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
 
             await showAlert('Evento creado con éxito.', 'success');
             setShowAddModal(false);
-            setNewEvent({ title: '', description: '', event_type: 'tutoria', start_time: '', end_time: '' });
+            setNewEvent({ title: '', description: '', event_type: 'tutoria', start_time: '', end_time: '', edition_id: editionId || '' });
             fetchEvents();
         } catch (err) {
             console.error(err);
@@ -187,7 +208,7 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex bg-slate-950 rounded-xl border border-slate-800 p-1">
                         <button onClick={prevMonth} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 transition-all"><ChevronLeft className="w-5 h-5" /></button>
                         <div className="px-4 py-1.5 text-sm font-bold text-white min-w-[140px] text-center">
@@ -195,6 +216,19 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                         </div>
                         <button onClick={nextMonth} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 transition-all"><ChevronRight className="w-5 h-5" /></button>
                     </div>
+
+                    {isAdminView && editions.length > 0 && (
+                        <select
+                            value={selectedEditionFilter}
+                            onChange={(e) => setSelectedEditionFilter(e.target.value)}
+                            className="bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                            <option value="all">🎯 Todas las Ediciones</option>
+                            {editions.map(ed => (
+                                <option key={ed.id} value={ed.id}>🎯 {ed.name}</option>
+                            ))}
+                        </select>
+                    )}
 
                     {isAdminView && (
                         <button
@@ -233,7 +267,9 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                         events
                             .filter(e => new Date(e.start_time) >= new Date())
                             .slice(0, 3)
-                            .map(event => (
+                            .map(event => {
+                                const eventEd = editions.find(ed => ed.id === event.edition_id);
+                                return (
                                 <div key={event.id} className="flex items-center justify-between p-4 bg-slate-900 border border-slate-800 rounded-2xl group hover:border-indigo-500/30 transition-all">
                                     <div className="flex items-center gap-4">
                                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center border ${event.event_type === 'tutoria' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' :
@@ -243,7 +279,14 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                                             {event.event_type === 'tutoria' ? <Video className="w-6 h-6" /> : <CalendarIcon className="w-6 h-6" />}
                                         </div>
                                         <div>
-                                            <h4 className="font-bold text-white group-hover:text-indigo-400 transition-colors">{event.title}</h4>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <h4 className="font-bold text-white group-hover:text-indigo-400 transition-colors">{event.title}</h4>
+                                                {eventEd && (
+                                                    <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                                                        🎯 {eventEd.name}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
                                                 <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(event.start_time).toLocaleString()}</span>
                                                 {event.description && <span className="truncate max-w-[200px]">{event.description}</span>}
@@ -259,7 +302,8 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                                         </button>
                                     )}
                                 </div>
-                            ))
+                            );
+                        })
                     )}
                 </div>
             </div>
@@ -287,6 +331,23 @@ const CourseCalendar = ({ courseId, editionId, isAdminView = false }) => {
                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                 />
                             </div>
+                            {editions.length > 0 && (
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block tracking-widest">Edición Asignada</label>
+                                    <select
+                                        value={newEvent.edition_id || ''}
+                                        onChange={(e) => setNewEvent({ ...newEvent, edition_id: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium text-sm"
+                                    >
+                                        <option value="">🌐 General (Visible para todas las ediciones)</option>
+                                        {editions.map(ed => (
+                                            <option key={ed.id} value={ed.id}>
+                                                🎯 {ed.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 uppercase mb-2 block tracking-widest">Tipo</label>

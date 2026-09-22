@@ -30,6 +30,7 @@ const CoursePlayer = () => {
     const { user, profile } = useAuth();
     const [course, setCourse] = useState(null);
     const [enrollment, setEnrollment] = useState(null);
+    const [courseEditions, setCourseEditions] = useState([]);
     const [modules, setModules] = useState([]);
     const [currentLesson, setCurrentLesson] = useState(null);
     const [completedLessons, setCompletedLessons] = useState(new Set());
@@ -313,6 +314,14 @@ const CoursePlayer = () => {
                 }
             }
 
+            // 4. Fetch all editions of this course for reference
+            const { data: allEditions } = await supabase
+                .schema('iavolution')
+                .from('course_editions')
+                .select('id, name')
+                .eq('course_id', id);
+            setCourseEditions(allEditions || []);
+
             const { data: modulesData, error: modulesError } = await supabase
                 .schema('iavolution')
                 .from('modules')
@@ -332,10 +341,22 @@ const CoursePlayer = () => {
 
             if (modulesError) throw modulesError;
 
-            // Sort lessons within modules by order
+            const userIsStaff = ['admin', 'teacher', 'manager'].includes(profile?.roleName || profile?.roles?.name);
+            const studentEditionId = bestEnrollment?.edition_id;
+
+            // Sort lessons within modules by order & filter materials by student's edition
             const sortedModules = (modulesData || []).map(mod => ({
                 ...mod,
-                lessons: (mod.lessons || []).sort((a, b) => a.order - b.order)
+                lessons: (mod.lessons || []).map(lesson => ({
+                    ...lesson,
+                    materials: (lesson.materials || []).filter(mat => {
+                        // Staff can see all materials (with edition badge)
+                        if (userIsStaff) return true;
+                        // Students only see global materials OR materials matching their edition
+                        if (!mat.edition_id) return true;
+                        return mat.edition_id === studentEditionId;
+                    })
+                })).sort((a, b) => a.order - b.order)
             }));
 
             setModules(sortedModules);
@@ -855,7 +876,14 @@ const CoursePlayer = () => {
                                                                         ? <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                                                                         : mat.type === 'video' ? <PlayCircle className="w-5 h-5 text-blue-400" /> : <FileText className="w-5 h-5 text-emerald-400" />
                                                                     }
-                                                                    <span className={`font-medium ${isViewed ? 'text-emerald-300' : 'text-slate-300'}`}>{mat.title}</span>
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <span className={`font-medium ${isViewed ? 'text-emerald-300' : 'text-slate-300'}`}>{mat.title}</span>
+                                                                        {isStaff && mat.edition_id && (
+                                                                            <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                                                                                🎯 {courseEditions.find(e => e.id === mat.edition_id)?.name || 'Edición'}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                                 <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-white transition-colors" />
                                                             </a>

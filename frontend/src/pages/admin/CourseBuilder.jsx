@@ -38,7 +38,7 @@ const CourseBuilder = () => {
 
     // Material Form States
     const [editingLessonId, setEditingLessonId] = useState(null);
-    const [newMaterial, setNewMaterial] = useState({ title: '', type: 'video', url: '' });
+    const [newMaterial, setNewMaterial] = useState({ title: '', type: 'video', url: '', edition_id: '' });
     const [selectedFile, setSelectedFile] = useState(null);
     const [isCreatingMaterial, setIsCreatingMaterial] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -466,12 +466,13 @@ const CourseBuilder = () => {
                     title: newMaterial.title,
                     type: newMaterial.type,
                     file_url: fileUrl,
-                    lesson_id: lessonId
+                    lesson_id: lessonId,
+                    edition_id: newMaterial.edition_id ? newMaterial.edition_id : null
                 }]);
 
             if (insertError) throw insertError;
 
-            setNewMaterial({ title: '', type: 'video', url: '' });
+            setNewMaterial({ title: '', type: 'video', url: '', edition_id: '' });
             setSelectedFile(null);
             await fetchCourseData();
         } catch (err) {
@@ -898,26 +899,38 @@ No devuelvas NADA MÁS que el JSON puro, sin texto adicional, sin formato de có
                                                                             {/* List of existing materials */}
                                                                             {lesson.materials?.length > 0 && (
                                                                                 <div className="space-y-2 mb-4">
-                                                                                    {lesson.materials.map(mat => (
-                                                                                        <div key={mat.id} className="flex items-center justify-between bg-slate-900 border border-slate-800 p-2 rounded text-sm">
-                                                                                            <div className="flex items-center gap-2">
-                                                                                                {mat.type === 'video' ? <Video className="w-4 h-4 text-blue-400" /> : <FileText className="w-4 h-4 text-emerald-400" />}
-                                                                                                <span className="text-slate-300">{mat.title}</span>
+                                                                                    {lesson.materials.map(mat => {
+                                                                                        const matEd = editions.find(e => e.id === mat.edition_id);
+                                                                                        return (
+                                                                                            <div key={mat.id} className="flex items-center justify-between bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-sm">
+                                                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                                                    {mat.type === 'video' ? <Video className="w-4 h-4 text-blue-400 shrink-0" /> : <FileText className="w-4 h-4 text-emerald-400 shrink-0" />}
+                                                                                                    <span className="text-slate-300 font-medium">{mat.title}</span>
+                                                                                                    {matEd ? (
+                                                                                                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                                                                                                            🎯 {matEd.name}
+                                                                                                        </span>
+                                                                                                    ) : (
+                                                                                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
+                                                                                                            🌐 General
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                                <div className="flex items-center gap-3 shrink-0">
+                                                                                                    <a href={mat.file_url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline text-xs font-semibold">Ver</a>
+                                                                                                    <button onClick={() => handleDeleteMaterial(mat.id)} className="text-slate-500 hover:text-red-400 transition-colors">
+                                                                                                        <Trash2 className="w-4 h-4" />
+                                                                                                    </button>
+                                                                                                </div>
                                                                                             </div>
-                                                                                            <div className="flex items-center gap-3">
-                                                                                                <a href={mat.file_url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline text-xs">Ver</a>
-                                                                                                <button onClick={() => handleDeleteMaterial(mat.id)} className="text-slate-500 hover:text-red-400">
-                                                                                                    <Trash2 className="w-4 h-4" />
-                                                                                                </button>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    ))}
+                                                                                        );
+                                                                                    })}
                                                                                 </div>
                                                                             )}
 
                                                                             {/* Add new material form */}
                                                                             <form onSubmit={(e) => handleCreateMaterial(e, lesson.id)} className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-                                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                                                                                     <input
                                                                                         type="text"
                                                                                         placeholder="Nombre Material"
@@ -930,8 +943,20 @@ No devuelvas NADA MÁS que el JSON puro, sin texto adicional, sin formato de có
                                                                                         onChange={(e) => setNewMaterial({ ...newMaterial, type: e.target.value })}
                                                                                         className="bg-slate-950 border border-slate-700 text-slate-300 text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                                                                     >
-                                                                                        <option value="video">Vídeo (URL/YouTube)</option>
+                                                                                        <option value="video">Vídeo / Grabación / Link</option>
                                                                                         <option value="pdf">Documento PDF</option>
+                                                                                    </select>
+                                                                                    <select
+                                                                                        value={newMaterial.edition_id || ''}
+                                                                                        onChange={(e) => setNewMaterial({ ...newMaterial, edition_id: e.target.value })}
+                                                                                        className="bg-slate-950 border border-slate-700 text-slate-300 text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                                    >
+                                                                                        <option value="">🌐 General (Todas las ediciones)</option>
+                                                                                        {editions.map(ed => (
+                                                                                            <option key={ed.id} value={ed.id}>
+                                                                                                🎯 {ed.name}
+                                                                                            </option>
+                                                                                        ))}
                                                                                     </select>
                                                                                     <input
                                                                                         type="url"

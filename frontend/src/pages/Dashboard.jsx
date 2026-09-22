@@ -106,34 +106,38 @@ const Dashboard = () => {
             const { data: courseMeta, error: metaError } = await supabase
                 .schema('iavolution')
                 .from('courses')
-                .select('id, modules(id, lessons(id, materials(id)))')
+                .select('id, modules(id, lessons(id, materials(id, edition_id)))')
                 .in('id', allCourseIds);
 
-            const courseStatsMap = {};
-            if (!metaError && courseMeta) {
-                courseMeta.forEach(c => {
+            // 4. Process enrollments from student view with edition-aware progress
+            const processedEnrollments = (enrData || []).map(enr => {
+                const c = (courseMeta || []).find(x => x.id === enr.course_id);
+                let stats = { totalLessons: 0, completedInCourse: 0, percent: 0 };
+
+                if (c) {
                     const allLessons = c.modules?.flatMap(m => m.lessons) || [];
-                    const allMaterials = allLessons.flatMap(l => l.materials || []);
+                    const allMaterials = allLessons.flatMap(l => 
+                        (l.materials || []).filter(m => !m.edition_id || m.edition_id === enr.edition_id)
+                    );
                     
                     const totalItems = allLessons.length + allMaterials.length;
                     const completedLessonsCount = allLessons.filter(l => completedLessonIds.has(l.id)).length;
                     const viewedMaterialsCount = allMaterials.filter(m => viewedMaterialIds.has(m.id)).length;
                     const completedItems = completedLessonsCount + viewedMaterialsCount;
 
-                    courseStatsMap[c.id] = {
+                    stats = {
                         totalLessons: allLessons.length,
                         completedInCourse: completedLessonsCount,
                         percent: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
                     };
-                });
-            }
+                }
 
-            // 4. Process enrollments from student view
-            const processedEnrollments = (enrData || []).map(enr => ({
-                ...enr,
-                isTeacherRole: false,
-                stats: courseStatsMap[enr.course_id] || { totalLessons: 0, completedInCourse: 0, percent: 0 }
-            }));
+                return {
+                    ...enr,
+                    isTeacherRole: false,
+                    stats
+                };
+            });
 
             // 5. Process courses from teacher view
             const enrolledCourseIds = new Set(processedEnrollments.map(e => e.course.id));
