@@ -110,12 +110,12 @@ END $$;
 -- Recargar caché de PostgREST
 NOTIFY pgrst, 'reload schema';
 
--- Comprobación final de matriculados en Septiembre 2026
+-- Comprobación final: listado de alumnos de Septiembre 2026
 SELECT 
     p.name AS "Alumno",
     p.email AS "Correo",
-    e.created_at AS "Fecha Matricula",
-    ce.name AS "Edicion"
+    ce.name AS "Edicion",
+    e.enrolled_at AS "Fecha Matricula"
 FROM iavolution.enrollments e
 JOIN iavolution.profiles p ON e.user_id = p.id
 JOIN iavolution.course_editions ce ON e.edition_id = ce.id
