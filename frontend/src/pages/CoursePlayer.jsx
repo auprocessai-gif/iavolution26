@@ -62,6 +62,22 @@ const CoursePlayer = () => {
     const [projectLink, setProjectLink] = useState('');
     const [isSubmittingProject, setIsSubmittingProject] = useState(false);
 
+    const isStaff = ['admin', 'teacher', 'manager'].includes(profile?.roleName || profile?.roles?.name);
+
+    const isModuleUnlocked = (moduleId) => {
+        if (isStaff) return true;
+        const unlockedList = enrollment?.edition?.unlocked_modules;
+        if (!unlockedList || !Array.isArray(unlockedList)) return true;
+        return unlockedList.includes(moduleId);
+    };
+
+    const isProjectUnlocked = () => {
+        if (isStaff) return true;
+        const unlockedList = enrollment?.edition?.unlocked_modules;
+        if (!unlockedList || !Array.isArray(unlockedList)) return true;
+        return !!enrollment?.edition?.unlock_project;
+    };
+
     useEffect(() => {
         if (user) {
             fetchCourseContent();
@@ -256,7 +272,7 @@ const CoursePlayer = () => {
                 .from('enrollments')
                 .select(`
                     id,
-                    edition:course_editions(name, live_class_url)
+                    edition:course_editions(id, name, live_class_url, unlocked_modules, unlock_project)
                 `)
                 .eq('user_id', user.id)
                 .eq('course_id', id);
@@ -276,7 +292,7 @@ const CoursePlayer = () => {
                 const { data: latestEditions } = await supabase
                     .schema('iavolution')
                     .from('course_editions')
-                    .select('name, live_class_url')
+                    .select('id, name, live_class_url, unlocked_modules, unlock_project')
                     .eq('course_id', id)
                     .eq('status', 'active')
                     .order('created_at', { ascending: false })
@@ -287,8 +303,11 @@ const CoursePlayer = () => {
                         ...prev,
                         edition: {
                             ...prev?.edition,
+                            id: latestEditions[0].id,
                             live_class_url: latestEditions[0].live_class_url,
-                            name: latestEditions[0].name
+                            name: latestEditions[0].name,
+                            unlocked_modules: latestEditions[0].unlocked_modules,
+                            unlock_project: latestEditions[0].unlock_project
                         }
                     }));
                 }
@@ -321,10 +340,20 @@ const CoursePlayer = () => {
 
             setModules(sortedModules);
 
-            // Set first lesson as current if none selected
-            if (sortedModules.length > 0 && sortedModules[0].lessons.length > 0) {
-                const firstLesson = sortedModules[0].lessons[0];
-                setCurrentLesson(firstLesson);
+            // Set first lesson as current from the first unlocked module
+            if (sortedModules.length > 0) {
+                const userIsStaff = ['admin', 'teacher', 'manager'].includes(profile?.roleName || profile?.roles?.name);
+                const activeEdition = bestEnrollment?.edition;
+                const unlockedList = activeEdition?.unlocked_modules;
+
+                const firstAvailableModule = sortedModules.find(m => {
+                    if (userIsStaff || !unlockedList || !Array.isArray(unlockedList)) return true;
+                    return unlockedList.includes(m.id);
+                }) || sortedModules[0];
+
+                if (firstAvailableModule && firstAvailableModule.lessons?.length > 0) {
+                    setCurrentLesson(firstAvailableModule.lessons[0]);
+                }
             }
         } catch (err) {
             console.error('Error fetching course content:', err);
@@ -532,7 +561,6 @@ const CoursePlayer = () => {
         );
     }
 
-    const isStaff = profile?.roleName === 'admin' || profile?.roleName === 'teacher' || profile?.roleName === 'manager';
     const isRestricted = !isStaff && !enrollment;
 
     if (isRestricted) {
@@ -957,75 +985,148 @@ const CoursePlayer = () => {
                 {/* Sidebar Curriculum */}
                 <aside className={`w-full lg:w-96 bg-slate-900 border-l border-slate-800 flex flex-col fixed inset-0 lg:static z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}`}>
                     <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-                        <h2 className="font-bold text-white text-lg">Contenido del Curso</h2>
+                        <div>
+                            <h2 className="font-bold text-white text-lg">Contenido del Curso</h2>
+                            {isStaff ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full mt-1 border border-indigo-500/20">
+                                    👨‍🏫 Modo Profesor: Acceso Total
+                                </span>
+                            ) : enrollment?.edition?.name ? (
+                                <p className="text-xs text-slate-400 mt-0.5">{enrollment.edition.name}</p>
+                            ) : null}
+                        </div>
                         <button className="lg:hidden p-2 text-slate-400" onClick={() => setSidebarOpen(false)}><X /></button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-                        {modules.map((module) => (
-                            <div key={module.id} className="mb-4">
-                                <h3 className="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-widest">{module.title}</h3>
-                                <div className="space-y-1">
-                                    {module.lessons?.map((lesson) => {
-                                        const isActive = currentLesson?.id === lesson.id;
-                                        return (
-                                            <button
-                                                key={lesson.id}
-                                                onClick={() => {
-                                                    setActiveTab('lessons');
-                                                    setCurrentLesson(lesson);
-                                                    setShowProject(false);
-                                                    if (window.innerWidth < 1024) setSidebarOpen(false);
-                                                }}
-                                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left ${isActive
-                                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                                                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                        {modules.map((module) => {
+                            const unlocked = isModuleUnlocked(module.id);
+                            return (
+                                <div key={module.id} className="mb-4">
+                                    <div className="px-4 py-2.5 flex items-center justify-between">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest truncate">{module.title}</h3>
+                                        {!unlocked && (
+                                            <span className="shrink-0 flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                                <Lock className="w-2.5 h-2.5" /> Próximamente
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1">
+                                        {module.lessons?.map((lesson) => {
+                                            const isActive = currentLesson?.id === lesson.id;
+                                            return (
+                                                <button
+                                                    key={lesson.id}
+                                                    onClick={() => {
+                                                        if (!unlocked) {
+                                                            showAlert('Este módulo aún no ha sido habilitado por el profesor para tu edición. ¡Se abrirá próximamente!', 'info');
+                                                            return;
+                                                        }
+                                                        setActiveTab('lessons');
+                                                        setCurrentLesson(lesson);
+                                                        setShowProject(false);
+                                                        if (window.innerWidth < 1024) setSidebarOpen(false);
+                                                    }}
+                                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left ${
+                                                        !unlocked
+                                                            ? 'opacity-40 cursor-not-allowed text-slate-500 hover:bg-slate-900/50'
+                                                            : isActive
+                                                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                                                                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                                                     }`}
-                                            >
-                                                <div className={`p-1.5 rounded-lg border ${isActive ? 'bg-white/20 border-white/20' : 'bg-slate-950 border-slate-700'}`}>
-                                                    {completedLessons.has(lesson.id) ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : (lesson.materials?.[0]?.type === 'video' ? <PlayCircle className="w-4 h-4" /> : <FileText className="w-4 h-4" />)}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-semibold truncate leading-tight">{lesson.title}</p>
-                                                    <p className={`text-[10px] mt-0.5 ${isActive ? 'text-indigo-200' : 'text-slate-500'}`}>
-                                                        {lesson.materials?.length || 0} recursos
-                                                    </p>
-                                                </div>
-                                                {completedLessons.has(lesson.id) && !isActive && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/50" />}
-                                            </button>
-                                        );
-                                    })}
+                                                >
+                                                    <div className={`p-1.5 rounded-lg border ${
+                                                        !unlocked
+                                                            ? 'bg-slate-950/80 border-slate-800 text-slate-600'
+                                                            : isActive
+                                                                ? 'bg-white/20 border-white/20'
+                                                                : 'bg-slate-950 border-slate-700'
+                                                    }`}>
+                                                        {!unlocked ? (
+                                                            <Lock className="w-4 h-4 text-amber-500/70" />
+                                                        ) : completedLessons.has(lesson.id) ? (
+                                                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                                        ) : (lesson.materials?.[0]?.type === 'video' ? (
+                                                            <PlayCircle className="w-4 h-4" />
+                                                        ) : (
+                                                            <FileText className="w-4 h-4" />
+                                                        ))}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-semibold truncate leading-tight">{lesson.title}</p>
+                                                        <p className={`text-[10px] mt-0.5 ${!unlocked ? 'text-slate-500' : isActive ? 'text-indigo-200' : 'text-slate-500'}`}>
+                                                            {!unlocked ? 'Bloqueado por el profesor' : `${lesson.materials?.length || 0} recursos`}
+                                                        </p>
+                                                    </div>
+                                                    {unlocked && completedLessons.has(lesson.id) && !isActive && (
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/50" />
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
 
-                        {project && (
-                            <div className="mt-2 pt-2 border-t border-slate-800/50">
-                                <button
-                                    onClick={() => {
-                                        setActiveTab('lessons');
-                                        setShowProject(true);
-                                        setCurrentLesson(null);
-                                        if (window.innerWidth < 1024) setSidebarOpen(false);
-                                    }}
-                                    className={`w-full flex items-center gap-3 px-4 py-4 rounded-xl transition-all text-left ${showProject
-                                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/20'
-                                        : 'text-indigo-400 hover:bg-slate-800'
+                        {project && (() => {
+                            const projectUnlocked = isProjectUnlocked();
+                            return (
+                                <div className="mt-2 pt-2 border-t border-slate-800/50">
+                                    <button
+                                        onClick={() => {
+                                            if (!projectUnlocked) {
+                                                showAlert('El Proyecto Final aún no ha sido habilitado por el profesor para tu edición.', 'info');
+                                                return;
+                                            }
+                                            setActiveTab('lessons');
+                                            setShowProject(true);
+                                            setCurrentLesson(null);
+                                            if (window.innerWidth < 1024) setSidebarOpen(false);
+                                        }}
+                                        className={`w-full flex items-center gap-3 px-4 py-4 rounded-xl transition-all text-left ${
+                                            !projectUnlocked
+                                                ? 'opacity-40 cursor-not-allowed text-slate-500 hover:bg-transparent'
+                                                : showProject
+                                                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/20'
+                                                    : 'text-indigo-400 hover:bg-slate-800'
                                         }`}
-                                >
-                                    <div className={`p-1.5 rounded-lg border ${showProject ? 'bg-white/20 border-white/20' : 'bg-slate-950 border-indigo-500/30'}`}>
-                                        <BrainCircuit className="w-4 h-4" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-black truncate leading-tight uppercase tracking-wider">PROYECTO FINAL</p>
-                                        <p className={`text-[10px] mt-0.5 ${showProject ? 'text-indigo-200' : 'text-slate-500'}`}>
-                                            {projectSubmission ? (projectSubmission.status === 'graded' ? 'Calificado' : 'Entregado') : 'Pendiente de entrega'}
-                                        </p>
-                                    </div>
-                                    {projectSubmission?.status === 'graded' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
-                                </button>
-                            </div>
-                        )}
+                                    >
+                                        <div className={`p-1.5 rounded-lg border ${
+                                            !projectUnlocked
+                                                ? 'bg-slate-950/80 border-slate-800 text-slate-600'
+                                                : showProject
+                                                    ? 'bg-white/20 border-white/20'
+                                                    : 'bg-slate-950 border-indigo-500/30'
+                                        }`}>
+                                            {!projectUnlocked ? (
+                                                <Lock className="w-4 h-4 text-amber-500/70" />
+                                            ) : (
+                                                <BrainCircuit className="w-4 h-4" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-sm font-black truncate leading-tight uppercase tracking-wider">PROYECTO FINAL</p>
+                                                {!projectUnlocked && (
+                                                    <span className="text-[10px] font-bold text-amber-500/80 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                                        Bloqueado
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className={`text-[10px] mt-0.5 ${!projectUnlocked ? 'text-slate-500' : showProject ? 'text-indigo-200' : 'text-slate-500'}`}>
+                                                {!projectUnlocked
+                                                    ? 'Disponible en la fase final'
+                                                    : projectSubmission
+                                                        ? (projectSubmission.status === 'graded' ? 'Calificado' : 'Entregado')
+                                                        : 'Pendiente de entrega'}
+                                            </p>
+                                        </div>
+                                        {projectUnlocked && projectSubmission?.status === 'graded' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                                    </button>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     <div className="p-4 bg-slate-950 border-t border-slate-800 mt-auto">

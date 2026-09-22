@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { getGeminiResponse } from '../../lib/gemini';
-import { Loader2, ArrowLeft, Plus, Edit3, Trash2, Video, FileText, ChevronDown, ChevronUp, BookOpen, BrainCircuit, X, Upload, Users, Calendar, Shield, Save } from 'lucide-react';
+import { Loader2, ArrowLeft, Plus, Edit3, Trash2, Video, FileText, ChevronDown, ChevronUp, BookOpen, BrainCircuit, X, Upload, Users, Calendar, Shield, Save, Lock, Unlock, CheckCircle2, Layers } from 'lucide-react';
 import { useModal } from '../../contexts/ModalContext';
 import CourseCalendar from '../../components/CourseCalendar';
 
@@ -24,6 +24,7 @@ const CourseBuilder = () => {
     // Edition Form States
     const [isCreatingEdition, setIsCreatingEdition] = useState(false);
     const [newEdition, setNewEdition] = useState({ name: '', start_date: '', end_date: '', max_students: '', live_class_url: '' });
+    const [expandedEditionModules, setExpandedEditionModules] = useState(null);
 
     // Form States
     const [newModuleTitle, setNewModuleTitle] = useState('');
@@ -267,6 +268,66 @@ const CourseBuilder = () => {
             console.error('Error deleting edition:', err);
             await showAlert('Error al eliminar la edición', 'error');
         }
+    };
+
+    // --- Course Edition Module Unlock Actions ---
+    const handleUpdateEditionModules = async (editionId, newUnlockedModules, newUnlockProject) => {
+        try {
+            const updateData = {};
+            if (newUnlockedModules !== undefined) updateData.unlocked_modules = newUnlockedModules;
+            if (newUnlockProject !== undefined) updateData.unlock_project = newUnlockProject;
+
+            const { error } = await supabase
+                .schema('iavolution')
+                .from('course_editions')
+                .update(updateData)
+                .eq('id', editionId);
+
+            if (error) throw error;
+
+            setEditions(prev => prev.map(ed => ed.id === editionId ? { ...ed, ...updateData } : ed));
+        } catch (err) {
+            console.error('Error updating edition modules:', err);
+            await showAlert('Error al actualizar los módulos de la edición: ' + (err.message || ''), 'error');
+        }
+    };
+
+    const handleStartProgressiveUnlock = async (editionId) => {
+        const firstModule = modules[0];
+        const initialList = firstModule ? [firstModule.id] : [];
+        await handleUpdateEditionModules(editionId, initialList, false);
+        setExpandedEditionModules(editionId);
+        await showAlert('Apertura progresiva activada: únicamente el Módulo 1 está disponible para los alumnos de esta edición.', 'success');
+    };
+
+    const handleUnlockAllForEdition = async (editionId) => {
+        await handleUpdateEditionModules(editionId, null, true);
+        await showAlert('Todos los módulos y el proyecto final están ahora abiertos para esta edición.', 'success');
+    };
+
+    const handleToggleModuleForEdition = async (edition, moduleId) => {
+        const currentList = Array.isArray(edition.unlocked_modules)
+            ? [...edition.unlocked_modules]
+            : modules.map(m => m.id);
+
+        let newList;
+        if (currentList.includes(moduleId)) {
+            newList = currentList.filter(id => id !== moduleId);
+        } else {
+            newList = [...currentList, moduleId];
+        }
+        await handleUpdateEditionModules(edition.id, newList);
+    };
+
+    const handleUnlockUpTo = async (edition, targetOrder) => {
+        const modulesToUnlock = modules.filter(m => m.order <= targetOrder).map(m => m.id);
+        await handleUpdateEditionModules(edition.id, modulesToUnlock);
+        await showAlert(`Se han abierto los módulos hasta el orden ${targetOrder}.`, 'success');
+    };
+
+    const handleToggleProjectForEdition = async (edition) => {
+        const nextVal = !edition.unlock_project;
+        await handleUpdateEditionModules(edition.id, undefined, nextVal);
     };
 
     const handleCreateModule = async (e) => {
@@ -1114,45 +1175,189 @@ No devuelvas NADA MÁS que el JSON puro, sin texto adicional, sin formato de có
                                         Aún no hay ediciones. Crea una para empezar a matricular alumnos.
                                     </p>
                                 ) : (
-                                    editions.map(edition => (
-                                        <div key={edition.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
-                                            <div>
-                                                <div className="flex items-center gap-3 mb-1">
-                                                    <h4 className="font-bold text-white">{edition.name}</h4>
-                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${edition.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-500/10 text-slate-400'
-                                                        }`}>
-                                                        {edition.status === 'active' ? 'Activa' : 'Cerrada'}
-                                                    </span>
+                                    editions.map(edition => {
+                                        const isProgressive = Array.isArray(edition.unlocked_modules);
+                                        const unlockedCount = isProgressive ? edition.unlocked_modules.length : modules.length;
+                                        const isExpanded = expandedEditionModules === edition.id;
+
+                                        return (
+                                            <div key={edition.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden transition-all">
+                                                <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-3 mb-1">
+                                                            <h4 className="font-bold text-white text-base">{edition.name}</h4>
+                                                            <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${edition.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400'}`}>
+                                                                {edition.status === 'active' ? 'Activa' : 'Cerrada'}
+                                                            </span>
+                                                            {isProgressive ? (
+                                                                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                                                                    <Lock className="w-3 h-3" /> Progresivo: {unlockedCount}/{modules.length} módulos
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
+                                                                    <Unlock className="w-3 h-3" /> Todos los módulos abiertos
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 mb-3">
+                                                            <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />
+                                                                {edition.start_date ? new Date(edition.start_date).toLocaleDateString() : 'Sin inicio'} - {edition.end_date ? new Date(edition.end_date).toLocaleDateString() : 'Sin fin'}
+                                                            </span>
+                                                            <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />
+                                                                {edition.max_students ? `Cupo: ${edition.max_students}` : 'Ilimitado'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 max-w-sm">
+                                                            <Video className="w-4 h-4 text-indigo-400 shrink-0" />
+                                                            <input
+                                                                type="url"
+                                                                placeholder="Pegar URL de Zoom / Meet..."
+                                                                defaultValue={edition.live_class_url || ''}
+                                                                onBlur={(e) => {
+                                                                    if (e.target.value !== (edition.live_class_url || '')) {
+                                                                        handleUpdateEditionUrl(edition.id, e.target.value);
+                                                                    }
+                                                                }}
+                                                                className="flex-1 bg-slate-950 border border-slate-700/50 rounded px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        {isProgressive ? (
+                                                            <button
+                                                                onClick={() => setExpandedEditionModules(isExpanded ? null : edition.id)}
+                                                                className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                                                    isExpanded 
+                                                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
+                                                                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                                                                }`}
+                                                            >
+                                                                <Layers className="w-3.5 h-3.5" />
+                                                                Módulos ({unlockedCount}/{modules.length})
+                                                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => handleStartProgressiveUnlock(edition.id)}
+                                                                className="px-3 py-2 rounded-lg text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5 transition-all"
+                                                                title="Bloquea todos los módulos excepto el primero para abrir poco a poco"
+                                                            >
+                                                                <Lock className="w-3.5 h-3.5" />
+                                                                Activar Apertura Progresiva
+                                                            </button>
+                                                        )}
+                                                        <button 
+                                                            onClick={() => handleDeleteEdition(edition.id)} 
+                                                            className="text-slate-500 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition-colors"
+                                                            title="Eliminar edición"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-4 text-xs text-slate-400 mb-3">
-                                                    <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />
-                                                        {edition.start_date ? new Date(edition.start_date).toLocaleDateString() : 'Sin inicio'} -
-                                                        {edition.end_date ? new Date(edition.end_date).toLocaleDateString() : 'Sin fin'}
-                                                    </span>
-                                                    <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />
-                                                        {edition.max_students ? `Cupo: ${edition.max_students}` : 'Ilimitado'}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-2 max-w-sm">
-                                                    <Video className="w-4 h-4 text-indigo-400" />
-                                                    <input
-                                                        type="url"
-                                                        placeholder="Pegar URL de Zoom / Meet..."
-                                                        defaultValue={edition.live_class_url || ''}
-                                                        onBlur={(e) => {
-                                                            if (e.target.value !== (edition.live_class_url || '')) {
-                                                                handleUpdateEditionUrl(edition.id, e.target.value);
-                                                            }
-                                                        }}
-                                                        className="flex-1 bg-slate-950 border border-slate-700/50 rounded px-2 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
-                                                    />
-                                                </div>
+
+                                                {/* Expanded Module Access Control Panel */}
+                                                {isProgressive && isExpanded && (
+                                                    <div className="border-t border-slate-800/80 bg-slate-950/60 p-5 space-y-4 animate-in fade-in duration-200">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/50">
+                                                            <div>
+                                                                <h5 className="text-sm font-bold text-white flex items-center gap-2">
+                                                                    <Lock className="w-4 h-4 text-amber-400" /> Control Manual de Módulos para "{edition.name}"
+                                                                </h5>
+                                                                <p className="text-xs text-slate-400 mt-0.5">
+                                                                    Abre o cierra cada módulo para esta cohorte. Los alumnos solo podrán ver las lecciones de los módulos en verde.
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    onClick={() => handleUnlockAllForEdition(edition.id)}
+                                                                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 transition-colors"
+                                                                >
+                                                                    Abrir Todos (Modo Libre)
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Modules List */}
+                                                        <div className="space-y-2">
+                                                            {modules.map((mod, index) => {
+                                                                const isUnlocked = edition.unlocked_modules?.includes(mod.id);
+                                                                return (
+                                                                    <div 
+                                                                        key={mod.id} 
+                                                                        className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                                                                            isUnlocked 
+                                                                                ? 'bg-slate-900/90 border-emerald-500/30' 
+                                                                                : 'bg-slate-900/40 border-slate-800 opacity-75'
+                                                                        }`}
+                                                                    >
+                                                                        <div className="flex items-center gap-3">
+                                                                            <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black ${
+                                                                                isUnlocked ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                                                                            }`}>
+                                                                                {index + 1}
+                                                                            </span>
+                                                                            <div>
+                                                                                <p className="text-xs font-bold text-slate-200">{mod.title}</p>
+                                                                                <p className="text-[10px] text-slate-500">{mod.lessons?.length || 0} lecciones</p>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                                                isUnlocked ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                                                                            }`}>
+                                                                                {isUnlocked ? 'Abierto' : 'Bloqueado'}
+                                                                            </span>
+                                                                            <button
+                                                                                onClick={() => handleUnlockUpTo(edition, mod.order)}
+                                                                                className="px-2 py-1 rounded text-[10px] font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+                                                                                title={`Abre los módulos 1 al ${index + 1}`}
+                                                                            >
+                                                                                Abrir hasta aquí
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => handleToggleModuleForEdition(edition, mod.id)}
+                                                                                className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                                                                                    isUnlocked 
+                                                                                        ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20' 
+                                                                                        : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20'
+                                                                                }`}
+                                                                            >
+                                                                                {isUnlocked ? 'Bloquear' : 'Abrir Módulo'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        {/* Project Final Toggle */}
+                                                        <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between p-3 rounded-xl bg-indigo-950/20 border border-indigo-900/30">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <BrainCircuit className="w-4 h-4 text-indigo-400" />
+                                                                <div>
+                                                                    <p className="text-xs font-bold text-white uppercase tracking-wider">Proyecto Final de Curso</p>
+                                                                    <p className="text-[10px] text-slate-400">Permite a los alumnos de esta edición ver y entregar el proyecto final</p>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => handleToggleProjectForEdition(edition)}
+                                                                className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                                                                    edition.unlock_project
+                                                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                                                        : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
+                                                                }`}
+                                                            >
+                                                                {edition.unlock_project ? '🏆 Proyecto Abierto' : '🔒 Proyecto Bloqueado'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <button onClick={() => handleDeleteEdition(edition.id)} className="text-slate-500 hover:text-red-400 p-2">
-                                                <Trash2 className="w-5 h-5" />
-                                            </button>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         </div>
