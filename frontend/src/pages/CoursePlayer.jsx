@@ -273,6 +273,7 @@ const CoursePlayer = () => {
                 .from('enrollments')
                 .select(`
                     id,
+                    edition_id,
                     edition:course_editions(id, name, live_class_url, unlocked_modules, unlock_project)
                 `)
                 .eq('user_id', user.id)
@@ -342,7 +343,7 @@ const CoursePlayer = () => {
             if (modulesError) throw modulesError;
 
             const userIsStaff = ['admin', 'teacher', 'manager'].includes(profile?.roleName || profile?.roles?.name);
-            const studentEditionId = bestEnrollment?.edition_id;
+            const studentEditionId = bestEnrollment?.edition_id || bestEnrollment?.edition?.id;
 
             // Sort lessons within modules by order & filter materials by student's edition
             const sortedModules = (modulesData || []).map(mod => ({
@@ -1003,7 +1004,7 @@ const CoursePlayer = () => {
                             ) : (
                                 <CourseCalendar
                                     courseId={id}
-                                    editionId={enrollment?.edition_id}
+                                    editionId={enrollment?.edition_id || enrollment?.edition?.id}
                                 />
                             )}
                         </div>
