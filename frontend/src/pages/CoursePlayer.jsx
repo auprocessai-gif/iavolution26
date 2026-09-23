@@ -422,28 +422,7 @@ const CoursePlayer = () => {
                 </div>
             );
         }
-
-        // Priority 2: PDF or SCORM - Try to embed in iframe if PDF
-        const pdfMaterial = lesson.materials?.find(m => m.type === 'pdf');
-        if (pdfMaterial) {
-            return (
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center">
-                    <FileText className="w-16 h-16 text-indigo-400 mx-auto mb-4" />
-                    <h2 className="text-xl font-bold text-white mb-2">{pdfMaterial.title}</h2>
-                    <p className="text-slate-400 mb-6">Esta lección contiene un documento PDF para su estudio.</p>
-                    <a
-                        href={pdfMaterial.file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold transition-all"
-                    >
-                        <Download className="w-5 h-5" /> Descargar / Ver Documento
-                    </a>
-                </div>
-            );
-        }
-
-        // Default: If no materials or unknown, show course cover
+        // Default: If no video material, show course cover
         return (
             <div className="relative aspect-video w-full rounded-[2.5rem] overflow-hidden shadow-2xl bg-slate-900 border border-slate-800 flex items-center justify-center group">
                 {course?.cover_image_url ? (
