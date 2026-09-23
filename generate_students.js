@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const students = [
-  { no: 1, name: "Jeniffer Vanesa Salguero García", email: "jeniffersalgueroz21@gmail.com", profession: "Lic. Economía Internacional", company: "Banco Integral S.A", role: "Analista de riesgos financieros", phone: "7752-6948", pass: "IAV2026*6948" },
+  { no: 1, name: "Jeniffer Vanesa Salguero García", email: "jeniffersalguero21@gmail.com", profession: "Lic. Economía Internacional", company: "Banco Integral S.A", role: "Analista de riesgos financieros", phone: "7752-6948", pass: "IAV2026*6948" },
   { no: 2, name: "Sergio Ivan Perez Delgado", email: "perezsergioivan@gmail.com", profession: "Ingeniero Agronomo", company: "Corporacion ILP", role: "Gerente", phone: "7859-4608", pass: "IAV2026*4608" },
   { no: 3, name: "Erick Rafael Aguilar Puente", email: "ingeniero.erickaguilar@gmail.com", profession: "Ingeniero de Sistemas Informaticas", company: "Colegio Evangélico Misión Centroamericana", role: "Docente en Informática", phone: "7743-8925", pass: "IAV2026*8925" },
   { no: 4, name: "José Humberto Estrada", email: "correo.estrada.personal@gmail.com", profession: "Lic. Informatica", company: "Grupo Don Chico", role: "Propietario", phone: "7856 6446", pass: "IAV2026*6446" },
@@ -21,11 +21,12 @@ const students = [
   { no: 17, name: "Arthur Roberto Dueñas Alcántara", email: "arthurduenas72@gmail.com", profession: "Ing. Industrial", company: "Gobierno de El Salvador", role: "Analista de procesos y transformación digital", phone: "7111-9884", pass: "IAV2026*9884" },
   { no: 18, name: "Guillermo Alex Hernandez Díaz", email: "gernandez77@hotmail.com", profession: "Lic. Contaduría Publica", company: "N/A", role: "N/A", phone: "6260-3130", pass: "IAV2026*3130" },
   { no: 19, name: "Mario Arturo Hernández Barrera", email: "mahbarrera@gmail.com", profession: "Ing. Industrial", company: "Be Organic", role: "Gerente de Operaciones", phone: "6170 1369", pass: "IAV2026*1369" },
-  { no: 20, name: "Beatriz Elena Ibarra Aguirre", email: "elenaibarra1545@gmail.com", profession: "N/A", company: "N/A", role: "N/A", phone: "7850 4097", pass: "IAV2026*4097" },
+  { no: 20, name: "Beatriz Elena Ibarra Aguirre", email: "elena.ibarra1595@gmail.com", profession: "N/A", company: "N/A", role: "N/A", phone: "7850 4097", pass: "IAV2026*4097" },
   { no: 21, name: "Eduardo Wilfredo Ortiz Molina", email: "gestionempresarial@acoyec.com", profession: "N/A", company: "N/A", role: "N/A", phone: "7479 2149", pass: "IAV2026*2149" },
   { no: 22, name: "Erika Valentina Mejia Lopez", email: "erikavalentinamejia@gmail.com", profession: "Lic. Contaduría Publica", company: "N/A", role: "N/A", phone: "7621-9451", pass: "IAV2026*9451" },
   { no: 23, name: "Lucia Emperatriz Hernández Romero", email: "luemheme@gmail.com", profession: "Lic. Economía y Negocios", company: "Servicios Generales Bursátiles S.A de C.V.", role: "Gerente de Mercadeo y ventas", phone: "7187-3020", pass: "IAV2026*3020" },
-  { no: 24, name: "Héctor Jonathan Serpas Hurtado", email: "hector.serpas@sslogistica.com", profession: "Ingeniero en Sistemas", company: "COASEGUROS", role: "Gerente de Reclamos", phone: "7853-6379", pass: "IAV2026*6379" }
+  { no: 24, name: "Héctor Jonathan Serpas Hurtado", email: "hector.serpas@sslogistica.com", profession: "Ingeniero en Sistemas", company: "COASEGUROS", role: "Gerente de Reclamos", phone: "7853-6379", pass: "IAV2026*6379" },
+  { no: 25, name: "Diana Stephanie Sandoval Aguilar", email: "iam.dianasandoval@gmail.com", profession: "Tecnico en Marketing", company: "Cancio Asosiados", role: "N/A", phone: "7015-1598", pass: "IAV2026*1598" }
 ];
 
 const courseTitle = "Diplomado en Automatización de Procesos con IA";
@@ -138,7 +139,7 @@ NOTIFY pgrst, 'reload schema';
 SELECT 
     p.name AS "Alumno",
     p.email AS "Correo",
-    e.created_at AS "Fecha Matricula",
+    e.enrolled_at AS "Fecha Matricula",
     ce.name AS "Edicion"
 FROM iavolution.enrollments e
 JOIN iavolution.profiles p ON e.user_id = p.id
@@ -178,7 +179,13 @@ console.log('CSV para Excel generado en:', csvPath);
 
 // 3. TRY GENERATING NATIVE XLSX IF PACKAGE EXISTS
 try {
-  const xlsx = await import('xlsx');
+  const { pathToFileURL } = await import('url');
+  let xlsx;
+  try {
+    xlsx = await import(pathToFileURL(path.resolve('frontend/node_modules/xlsx/xlsx.mjs')).href);
+  } catch {
+    xlsx = await import('xlsx');
+  }
   const wsData = [
     csvHeaders,
     ...students.map(s => [
@@ -199,8 +206,15 @@ try {
   const ws = xlsx.utils.aoa_to_sheet(wsData);
   xlsx.utils.book_append_sheet(wb, ws, "Septiembre 2026");
   const xlsxPath = path.resolve('c:/Users/Mario/Documents/iavolution/Alumnos_Diplomado_Septiembre_2026.xlsx');
-  xlsx.writeFile(wb, xlsxPath);
-  console.log('XLSX generado en:', xlsxPath);
+  const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  try {
+    fs.writeFileSync(xlsxPath, buf);
+    console.log('XLSX generado en:', xlsxPath);
+  } catch (err) {
+    const fallbackPath = path.resolve('c:/Users/Mario/Documents/iavolution/Alumnos_Diplomado_Septiembre_2026_actualizado.xlsx');
+    fs.writeFileSync(fallbackPath, buf);
+    console.log('El archivo original estaba abierto en Excel. Nuevo XLSX generado en:', fallbackPath);
+  }
 } catch (e) {
   console.log('XLSX no se pudo generar directamente, CSV con BOM disponible:', e.message);
 }
