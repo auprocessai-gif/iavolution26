@@ -109,45 +109,43 @@ const Dashboard = () => {
                 .select('id, modules(id, lessons(id, materials(id, edition_id)))')
                 .in('id', allCourseIds);
 
-            // 4. Process enrollments from student view with edition-aware progress
-            const processedEnrollments = (enrData || []).map(enr => {
-                const c = (courseMeta || []).find(x => x.id === enr.course_id);
-                let stats = { totalLessons: 0, completedInCourse: 0, percent: 0 };
+            const getCourseStats = (courseId, editionId = null) => {
+                const c = (courseMeta || []).find(x => x.id === courseId);
+                if (!c) return { totalLessons: 0, completedInCourse: 0, percent: 0 };
 
-                if (c) {
-                    const allLessons = c.modules?.flatMap(m => m.lessons) || [];
-                    const allMaterials = allLessons.flatMap(l => 
-                        (l.materials || []).filter(m => !m.edition_id || m.edition_id === enr.edition_id)
-                    );
-                    
-                    const totalItems = allLessons.length + allMaterials.length;
-                    const completedLessonsCount = allLessons.filter(l => completedLessonIds.has(l.id)).length;
-                    const viewedMaterialsCount = allMaterials.filter(m => viewedMaterialIds.has(m.id)).length;
-                    const completedItems = completedLessonsCount + viewedMaterialsCount;
-
-                    stats = {
-                        totalLessons: allLessons.length,
-                        completedInCourse: completedLessonsCount,
-                        percent: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
-                    };
-                }
+                const allLessons = c.modules?.flatMap(m => m.lessons) || [];
+                const allMaterials = allLessons.flatMap(l => 
+                    (l.materials || []).filter(m => !m.edition_id || !editionId || m.edition_id === editionId)
+                );
+                
+                const totalItems = allLessons.length + allMaterials.length;
+                const completedLessonsCount = allLessons.filter(l => completedLessonIds.has(l.id)).length;
+                const viewedMaterialsCount = allMaterials.filter(m => viewedMaterialIds.has(m.id)).length;
+                const completedItems = completedLessonsCount + viewedMaterialsCount;
 
                 return {
-                    ...enr,
-                    isTeacherRole: false,
-                    stats
+                    totalLessons: allLessons.length,
+                    completedInCourse: completedLessonsCount,
+                    percent: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
                 };
-            });
+            };
+
+            // 4. Process enrollments from student view with edition-aware progress
+            const processedEnrollments = (enrData || []).map(enr => ({
+                ...enr,
+                isTeacherRole: false,
+                stats: getCourseStats(enr.course_id, enr.edition_id)
+            }));
 
             // 5. Process courses from teacher view
-            const enrolledCourseIds = new Set(processedEnrollments.map(e => e.course.id));
+            const enrolledCourseIds = new Set(processedEnrollments.map(e => e.course?.id).filter(Boolean));
             const teacherEnrollments = (teacherCourses || [])
                 .filter(c => !enrolledCourseIds.has(c.id))
                 .map(course => ({
                     id: `teacher-${course.id}`,
                     course: course,
                     isTeacherRole: true,
-                    stats: courseStatsMap[course.id] || { totalLessons: 0, completedInCourse: 0, percent: 0 }
+                    stats: getCourseStats(course.id)
                 }));
 
             setEnrollments([...processedEnrollments, ...teacherEnrollments]);
